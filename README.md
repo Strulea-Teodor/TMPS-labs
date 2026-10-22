@@ -27,7 +27,7 @@ Each lab lives on its own branch so the evolution of the design is easy to follo
 ```
 CinemaBooking/
 ├── Program.cs                      composition root + demo scenarios
-├── Domain/                         plain data classes, no business logic
+├── Domain/                         data classes that guard only their own invariants
 │   ├── Movie.cs
 │   ├── Screening.cs
 │   ├── Seat.cs                     abstract product (Factory Method)
@@ -116,9 +116,9 @@ public BookingService(
 
 It has no idea whether the money comes from a card or PayPal, or whether
 bookings live in memory or in SQL. The concrete classes are chosen in one
-place (`Program.cs`, the composition root) and injected. The demo shows the
-same service running with `CardPayment` and then with `PayPalPayment`
-without any change to the service.
+place (`Program.cs`, the composition root) and injected. The demo runs the
+same `BookingService` class once with `CardPayment` and once with
+`PayPalPayment` without a single line of the service changing.
 
 ## Lab 1 — Creational patterns
 
@@ -151,7 +151,9 @@ public sealed class CinemaSchedule
   default, so no hand-written locking is needed;
 - **`sealed`** prevents a subclass from smuggling in a second instance.
 
-The demo fetches `Instance` twice and shows `ReferenceEquals` is `true`.
+The demo fetches `Instance` twice, shows `ReferenceEquals` is `true`, then
+adds a screening through one reference and reads the new count through the
+other.
 
 ### 2. Factory Method — `HallLayout.CreateSeat()`
 

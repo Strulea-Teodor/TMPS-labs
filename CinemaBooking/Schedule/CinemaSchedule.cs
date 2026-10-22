@@ -45,6 +45,6 @@ public sealed class CinemaSchedule
     public IEnumerable<Screening> ForMovie(string title) =>
         _screenings.Where(s => s.Movie.Title.Equals(title, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>Used by the demo to prove both references point at the same object.</summary>
+    /// <summary>Cinema-wide free seat count, shown in the demo's summary line.</summary>
     public int TotalFreeSeats => _screenings.Sum(s => s.FreeSeats.Count());
 }

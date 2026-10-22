@@ -35,5 +35,5 @@ public class Screening
     public IEnumerable<Seat> FreeSeats => Seats.Where(s => !s.IsTaken);
 
     public override string ToString() =>
-        $"#{Id}  {Movie.Title,-22} {StartTime:ddd dd MMM HH:mm}   {BasePrice:0.00} MDL   {Hall.Name,-24} free: {FreeSeats.Count()}/{Seats.Count}";
+        $"#{Id}  {Movie.Title,-22} {StartTime:ddd dd MMM HH:mm}   {BasePrice:0.00} MDL   {Hall.Name,-26} free: {FreeSeats.Count()}/{Seats.Count}";
 }

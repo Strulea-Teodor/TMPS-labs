@@ -43,8 +43,14 @@ public static class Program
         var b = CinemaSchedule.Instance;
 
         Console.WriteLine($"  Same instance?            {ReferenceEquals(a, b)}");
-        Console.WriteLine($"  Screenings via 'a':       {a.Screenings.Count}");
         Console.WriteLine($"  Screenings via 'b':       {b.Screenings.Count}");
+
+        // Add through 'a', observe through 'b' - there is only one list underneath.
+        a.AddScreening(new Movie("Late-night classic", 95, "Horror"),
+                       NextWeekday(DayOfWeek.Friday).AddHours(23), 70m,
+                       new StandardHallLayout(rows: 2, seatsPerRow: 4));
+
+        Console.WriteLine($"  ...after a.AddScreening(): {b.Screenings.Count}");
         Console.WriteLine("  // new CinemaSchedule() does not compile - the constructor is private.\n");
 
         Console.WriteLine("  Schedule:");
@@ -98,7 +104,7 @@ public static class Program
 
         Confirm(bookingA, new CardPayment("4111222233334444"), priceCalculator, repository, printer);
 
-        // Scenario B: regular customer, Tuesday screening, PayPal. Same service, different payment (DIP).
+        // Scenario B: regular customer, Tuesday screening, PayPal. Same BookingService class, different IPaymentMethod injected (DIP).
         Console.WriteLine("  Scenario B: Ion -> Paddington on Tuesday, seat A1, PayPal");
         var bookingB = new BookingBuilder()
             .ForCustomer(ion)
