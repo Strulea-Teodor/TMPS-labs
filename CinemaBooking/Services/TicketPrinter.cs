@@ -18,8 +18,11 @@ public class TicketPrinter
         Console.WriteLine(line);
         Console.WriteLine($"  Movie:     {booking.Screening.Movie.Title}");
         Console.WriteLine($"  Time:      {booking.Screening.StartTime:ddd, dd MMM yyyy HH:mm}");
-        Console.WriteLine($"  Seats:     {string.Join(", ", booking.Seats.Select(s => s.Label))}");
+        Console.WriteLine($"  Hall:      {booking.Screening.Hall.Name}");
+        Console.WriteLine($"  Seats:     {string.Join(", ", booking.Seats.Select(s => $"{s.Label} ({s.Category})"))}");
         Console.WriteLine($"  Customer:  {booking.Customer.Name}");
+        if (!string.IsNullOrWhiteSpace(booking.Note))
+            Console.WriteLine($"  Note:      {booking.Note}");
         Console.WriteLine($"  Total:     {booking.TotalPrice:0.00} MDL");
         Console.WriteLine($"  Booking #: {booking.Id.ToString()[..8].ToUpper()}");
         Console.WriteLine(line);

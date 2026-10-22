@@ -5,11 +5,14 @@ using CinemaBooking.Repositories;
 namespace CinemaBooking.Services;
 
 /// <summary>
-/// Orchestrates the booking flow: reserve seats -> calculate price -> pay -> save.
+/// Orchestrates the booking flow: calculate price -> pay -> reserve seats -> save.
 ///
 /// DIP: this high-level class depends only on abstractions
 /// (IPaymentMethod, IBookingRepository). The concrete implementations are
 /// injected through the constructor, so they can be swapped freely.
+///
+/// Lab 1: the "assemble and validate" step moved out into BookingBuilder,
+/// so this service receives a fully formed Booking and only has to process it.
 /// </summary>
 public class BookingService
 {
@@ -27,32 +30,25 @@ public class BookingService
         _paymentMethod = paymentMethod;
     }
 
-    public Booking Book(Customer customer, Screening screening, IEnumerable<string> seatLabels)
+    public Booking Confirm(Booking booking)
     {
-        // 1. Resolve and validate the requested seats.
-        var seats = new List<Seat>();
-        foreach (var label in seatLabels)
-        {
-            var seat = screening.FindSeat(label)
-                ?? throw new ArgumentException($"Seat '{label}' does not exist in this hall.");
+        // Guard against a race: the builder checked availability at build time,
+        // but another booking could have taken a seat since then.
+        var alreadyTaken = booking.Seats.Where(s => s.IsTaken).ToList();
+        if (alreadyTaken.Count > 0)
+            throw new InvalidOperationException(
+                $"Seat(s) no longer available: {string.Join(", ", alreadyTaken.Select(s => s.Label))}.");
 
-            if (seat.IsTaken)
-                throw new InvalidOperationException($"Seat {seat.Label} is already taken.");
-
-            seats.Add(seat);
-        }
-
-        // 2. Build the booking and price it.
-        var booking = new Booking(customer, screening, seats);
+        // 1. Price it.
         booking.TotalPrice = _priceCalculator.Calculate(booking);
 
-        // 3. Take payment through whatever method was injected.
+        // 2. Take payment through whatever method was injected.
         Console.WriteLine($"  Paying with {_paymentMethod.Name}:");
         if (!_paymentMethod.Pay(booking.TotalPrice))
             throw new InvalidOperationException("Payment failed. Seats were not reserved.");
 
-        // 4. Only after a successful payment: reserve the seats and persist.
-        foreach (var seat in seats)
+        // 3. Only after a successful payment: reserve the seats and persist.
+        foreach (var seat in booking.Seats)
             seat.Take();
 
         _repository.Save(booking);
