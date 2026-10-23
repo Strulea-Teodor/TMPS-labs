@@ -6,6 +6,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>CinemaBooking</RootNamespace>
+    <!-- Run on any installed runtime >= 8.0 (e.g. a machine that only has .NET 9). -->
+    <RollForward>LatestMajor</RollForward>
   </PropertyGroup>
 
 </Project>
