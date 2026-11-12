@@ -1,0 +1,34 @@
+classDiagram
+    direction TB
+    class BookingService {
+        -IPaymentMethod _paymentMethod
+        -IBookingRepository _repository
+        +Book(Customer, Screening, seatLabels) Booking
+    }
+    class IPaymentMethod {
+        <<interface>>
+        +string Name
+        +Pay(decimal amount) bool
+    }
+    class IBookingRepository {
+        <<interface>>
+        +Save(Booking) void
+        +GetById(Guid) Booking
+        +GetAll() IReadOnlyList~Booking~
+    }
+    class CardPayment
+    class PayPalPayment
+    class InMemoryBookingRepository
+    class Program {
+        +Main() void
+    }
+    BookingService --> IPaymentMethod : depends on
+    BookingService --> IBookingRepository : depends on
+    IPaymentMethod <|.. CardPayment
+    IPaymentMethod <|.. PayPalPayment
+    IBookingRepository <|.. InMemoryBookingRepository
+    Program ..> BookingService : creates and injects into
+    Program ..> CardPayment : creates
+    Program ..> PayPalPayment : creates
+    Program ..> InMemoryBookingRepository : creates
+    note for BookingService "High-level policy: knows only abstractions"

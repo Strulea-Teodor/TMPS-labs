@@ -1,32 +1,38 @@
-# TMPS Labs — Cinema Booking System
+# Laboratory Work 0 — SOLID Principles
 
 **Course:** Tehnici și Mecanisme de Proiectare Software (TMPS)
 **Author:** Teodor Strulea, FAF-242
 **Language:** C# (.NET 8)
+**Project:** Cinema Booking System
 
-## About the project
+## Objectives
 
-This repository holds a single pet project that grows over the whole semester:
-a **cinema ticket booking system**. Customers pick a screening, choose seats,
-get discounts applied, pay, and receive a ticket.
+1. Choose a simple domain for a semester-long pet project.
+2. Study the SOLID principles.
+3. Implement the project's core while applying three of the principles.
 
-The domain is deliberately simple so that the focus stays on *how* the code is
-designed rather than *what* it does. Each lab adds a new layer of design to the
-same codebase:
+Principles applied in this laboratory work: **Single Responsibility (SRP)**,
+**Open/Closed (OCP)** and **Dependency Inversion (DIP)**.
 
-| Lab   | Branch   | Topic                                                           |
-|-------|----------|-----------------------------------------------------------------|
-| Lab 0 | `Lab-0`  | Project setup + 3 SOLID principles (SRP, OCP, DIP)              |
-| Lab 1+| `Lab-N`  | Creational, structural and behavioral design patterns (9 total) |
+## Theory
 
-Each lab lives on its own branch so the evolution of the design is easy to follow.
+SOLID is a set of five object-oriented design principles whose shared goal is
+code that can change without breaking: each class has one job (S), new
+behaviour is added by writing new code instead of editing working code (O),
+subtypes can stand in for their base types (L), interfaces stay small (I), and
+high-level logic depends on abstractions instead of concrete details (D).
 
-## Project structure
+## The project
+
+A **cinema ticket booking system**. Customers pick a screening, choose seats,
+get discounts applied, pay, and receive a ticket. The domain is deliberately
+simple so that the focus stays on *how* the code is designed rather than
+*what* it does.
 
 ```
 CinemaBooking/
 ├── Program.cs                      composition root + demo scenarios
-├── Domain/                         plain data classes, no business logic
+├── Domain/                         data classes that guard only their own invariants
 │   ├── Movie.cs
 │   ├── Screening.cs
 │   ├── Seat.cs
@@ -49,14 +55,15 @@ CinemaBooking/
     └── BookingService.cs
 ```
 
-## Lab 0 — SOLID principles
+## Implementation
 
 ### 1. Single Responsibility Principle (SRP)
 
 > A class should have only one reason to change.
 
-`Booking` is a pure data holder. It does not know how to price itself, store
-itself or print itself. Each of those concerns has its own class:
+`Booking` holds the booking data and nothing else. It does not know how to
+price itself, store itself or print itself. Each of those concerns has its own
+class:
 
 | Class                       | Its one job                                  |
 |-----------------------------|----------------------------------------------|
@@ -68,6 +75,8 @@ itself or print itself. Each of those concerns has its own class:
 
 If the ticket layout changes, only `TicketPrinter` is touched. If storage
 moves to a database, only the repository changes.
+
+<p align="center"><img src="docs/uml/srp.png" alt="UML class diagram showing one responsibility per class" width="760"></p>
 
 ### 2. Open/Closed Principle (OCP)
 
@@ -84,9 +93,20 @@ public interface IDiscount
 }
 ```
 
-`PriceCalculator` simply iterates over the discounts it is given. To add a
-new rule — say a `SeniorDiscount` or a `PremiereSurcharge` — you write a new
-class and register it in `Program.cs`. `PriceCalculator` is never edited.
+`PriceCalculator` simply iterates over the discounts it is given:
+
+```csharp
+foreach (var discount in _discounts)
+{
+    if (discount.IsApplicable(booking))
+        price = discount.Apply(booking, price);
+}
+```
+
+To add a new rule — say a `SeniorDiscount` — you write a new class and
+register it in `Program.cs`. `PriceCalculator` is never edited.
+
+<p align="center"><img src="docs/uml/ocp.png" alt="UML class diagram of PriceCalculator and the IDiscount hierarchy" width="700"></p>
 
 ### 3. Dependency Inversion Principle (DIP)
 
@@ -105,13 +125,15 @@ public BookingService(
 
 It has no idea whether the money comes from a card or PayPal, or whether
 bookings live in memory or in SQL. The concrete classes are chosen in one
-place (`Program.cs`, the composition root) and injected. The demo shows the
-same service running with `CardPayment` and then with `PayPalPayment`
-without any change to the service.
+place (`Program.cs`, the composition root) and injected. The demo runs the
+same `BookingService` class once with `CardPayment` and once with
+`PayPalPayment` without a single line of the service changing.
 
-## Running the project
+<p align="center"><img src="docs/uml/dip.png" alt="UML class diagram showing BookingService depending on interfaces" width="700"></p>
 
-Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download).
+## Results
+
+Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download) or newer.
 
 ```bash
 cd CinemaBooking
@@ -122,9 +144,13 @@ The demo runs three scenarios: a student booking two seats by card, a regular
 customer booking on a Tuesday with PayPal, and an attempt to double-book a
 seat that is correctly rejected.
 
-## What comes next
+## Conclusions
 
-The structure already leaves room for the patterns planned in later labs:
-discounts are a natural **Strategy**, seat add-ons fit **Decorator**,
-screening changes fit **Observer**, the booking lifecycle fits **State**,
-and the composition root can grow into a **Factory** or **Builder**.
+- **SRP** made every class short and easy to name: when a requirement
+  changes, there is one obvious place to edit.
+- **OCP** turned "add a discount" from an edit inside the pricing logic into
+  a new, isolated class.
+- **DIP** decoupled the booking flow from payment and storage details, so
+  either can be replaced without touching `BookingService`.
+- Together they give the project a base that can grow in small steps without
+  rewriting what already works.
