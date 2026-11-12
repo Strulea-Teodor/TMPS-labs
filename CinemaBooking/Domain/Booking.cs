@@ -19,7 +19,7 @@ public class Booking
     public string? Note { get; }
     public DateTime CreatedAt { get; } = DateTime.Now;
 
-    /// <summary>Final amount after discounts; set once the price is calculated.</summary>
+    /// <summary>Amount actually charged: tickets after discounts plus any extras. Set once paid.</summary>
     public decimal TotalPrice { get; set; }
 
     public Booking(Customer customer, Screening screening, IReadOnlyList<Seat> seats, string? note = null)

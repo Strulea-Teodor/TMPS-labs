@@ -8,9 +8,9 @@ namespace CinemaBooking.Services;
 /// <summary>
 /// Processes an order: pay -> reserve seats -> save.
 ///
-/// DIP: this high-level class depends only on abstractions
-/// (IPaymentMethod, IBookingRepository, IBookingOrder). The concrete
-/// implementations are injected, so they can be swapped freely.
+/// DIP: payment, storage and the order itself are known only through
+/// abstractions (IPaymentMethod, IBookingRepository, IBookingOrder), so
+/// their concrete implementations can be swapped freely.
 ///
 /// Lab 2: the service now charges an IBookingOrder instead of a bare Booking.
 /// Whether the order is plain tickets or tickets wrapped in three extras makes
@@ -49,14 +49,15 @@ public class BookingService
                 $"Seat(s) no longer available: {string.Join(", ", alreadyTaken.Select(s => s.Label))}.");
 
         // 1. The order already knows its total (tickets + any extras).
-        booking.TotalPrice = order.Total;
+        decimal total = order.Total;
 
         // 2. Take payment through whatever method was injected.
         Console.WriteLine($"  Paying with {_paymentMethod.Name}:");
-        if (!_paymentMethod.Pay(booking.TotalPrice))
+        if (!_paymentMethod.Pay(total))
             throw new InvalidOperationException("Payment failed. Seats were not reserved.");
 
-        // 3. Only after a successful payment: reserve the seats and persist.
+        // 3. Only after a successful payment: record the amount, reserve the seats and persist.
+        booking.TotalPrice = total;
         foreach (var seat in booking.Seats)
             seat.Take();
 

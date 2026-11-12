@@ -114,8 +114,9 @@ public static class Program
     }
 
     // ----------------------------------------------------------------------
-    // FACADE: the same purchase flow as above, but the client makes ONE call
-    // and never touches the builder, calculator, decorators, service or printer.
+    // FACADE: the same purchase flow as above, but the client makes ONE call.
+    // It hands the facade its dependencies once and never calls the builder,
+    // calculator, decorators, service or printer itself.
     // ----------------------------------------------------------------------
     private static void DemoFacade(PriceCalculator priceCalculator, IBookingRepository repository, TicketPrinter printer)
     {
