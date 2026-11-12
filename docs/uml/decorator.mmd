@@ -1,0 +1,36 @@
+classDiagram
+    direction TB
+    class IBookingOrder {
+        <<interface>>
+        +Booking Booking
+        +IReadOnlyList~OrderLine~ Lines
+        +decimal Total
+    }
+    class TicketsOrder {
+        -decimal _ticketsPrice
+        +decimal Total
+    }
+    class OrderExtra {
+        <<abstract>>
+        -IBookingOrder _inner
+        #string Label*
+        #decimal ExtraPrice*
+        +decimal Total
+    }
+    class PopcornExtra {
+        #ExtraPrice = 60
+    }
+    class DrinkExtra {
+        #ExtraPrice = 35
+    }
+    class Glasses3DExtra {
+        #ExtraPrice = 20 per seat
+    }
+    IBookingOrder <|.. TicketsOrder
+    IBookingOrder <|.. OrderExtra
+    OrderExtra o--> "1" IBookingOrder : wraps (_inner)
+    OrderExtra <|-- PopcornExtra
+    OrderExtra <|-- DrinkExtra
+    OrderExtra <|-- Glasses3DExtra
+    note for OrderExtra "Total = _inner.Total + ExtraPrice"
+    note for TicketsOrder "Concrete component: tickets only"

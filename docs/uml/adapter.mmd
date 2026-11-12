@@ -1,0 +1,34 @@
+classDiagram
+    direction TB
+    class BookingService {
+        -IPaymentMethod _paymentMethod
+        +Confirm(IBookingOrder) Booking
+    }
+    class IPaymentMethod {
+        <<interface>>
+        +string Name
+        +Pay(decimal amount) bool
+    }
+    class CardPayment {
+        +Pay(decimal amount) bool
+    }
+    class QuickPayAdapter {
+        -QuickPayClient _client
+        -string _reference
+        +Pay(decimal amount) bool
+    }
+    class QuickPayClient {
+        <<third-party SDK>>
+        +SubmitCharge(long minorUnits, string currency, string reference) QuickPayReceipt
+    }
+    class QuickPayReceipt {
+        +string TransactionId
+        +int StatusCode
+        +string Message
+    }
+    BookingService --> IPaymentMethod : client uses target
+    IPaymentMethod <|.. CardPayment
+    IPaymentMethod <|.. QuickPayAdapter
+    QuickPayAdapter --> QuickPayClient : translates calls to adaptee
+    QuickPayClient ..> QuickPayReceipt : returns
+    note for QuickPayAdapter "Converts MDL to bani and status code to bool"

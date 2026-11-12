@@ -1,237 +1,246 @@
-# TMPS Labs — Cinema Booking System
+# Laboratory Work 2 — Structural Design Patterns
 
 **Course:** Tehnici și Mecanisme de Proiectare Software (TMPS)
 **Author:** Teodor Strulea, FAF-242
 **Language:** C# (.NET 8)
+**Project:** Cinema Booking System
 
-## About the project
+## Objectives
 
-This repository holds a single pet project that grows over the whole semester:
-a **cinema ticket booking system**. Customers pick a screening, choose seats,
-get discounts applied, pay, and receive a ticket.
+1. Study the structural design patterns and understand what problem each one solves.
+2. Choose three of them and implement them in the semester project.
+3. Keep the existing code working: the new patterns must plug into the
+   project instead of replacing it.
 
-The domain is deliberately simple so that the focus stays on *how* the code is
-designed rather than *what* it does. Each lab adds a new layer of design to the
-same codebase:
+Patterns implemented in this laboratory work: **Adapter**, **Decorator** and **Facade**.
 
-| Lab   | Branch   | Topic                                                           |
-|-------|----------|-----------------------------------------------------------------|
-| Lab 0 | `Lab-0`  | Project setup + 3 SOLID principles (SRP, OCP, DIP)              |
-| Lab 1 | `Lab-1`  | Creational patterns: Singleton, Factory Method, Builder         |
-| Lab 2+| `Lab-N`  | Structural and behavioral design patterns                       |
+## Theory
 
-Each lab lives on its own branch so the evolution of the design is easy to follow.
+Structural patterns describe how classes and objects are *composed* into
+larger structures while keeping those structures flexible. Instead of
+changing existing classes, they add a thin object between them: a translator
+(Adapter), a wrapper that adds behaviour (Decorator), or a simplified front
+door (Facade).
 
-## Project structure
+## The project
+
+A cinema ticket booking system: customers pick a screening, choose seats, get
+discounts applied, optionally add extras, pay, and receive a ticket.
 
 ```
 CinemaBooking/
-├── Program.cs                      composition root + demo scenarios
-├── Domain/                         data classes that guard only their own invariants
-│   ├── Movie.cs
-│   ├── Screening.cs
-│   ├── Seat.cs                     abstract product (Factory Method)
-│   ├── StandardSeat.cs             concrete product
-│   ├── VipSeat.cs                  concrete product
-│   ├── Customer.cs
-│   └── Booking.cs
-├── Halls/                          FACTORY METHOD
-│   ├── HallLayout.cs               abstract creator with CreateSeat()
-│   ├── StandardHallLayout.cs       concrete creator
-│   └── PremiumHallLayout.cs        concrete creator
-├── Schedule/                       SINGLETON
-│   └── CinemaSchedule.cs
-├── Builders/                       BUILDER
-│   └── BookingBuilder.cs
-├── Discounts/                      OCP: pluggable pricing rules
-│   ├── IDiscount.cs
-│   ├── StudentDiscount.cs
-│   └── TuesdayDiscount.cs
-├── Payments/                       DIP: pluggable payment methods
+├── Program.cs                      composition root + demo of the three patterns
+├── Domain/                         Movie, Screening, Seat, Customer, Booking
+├── Halls/                          hall layouts that create the seats
+├── Schedule/                       the cinema's screening schedule
+├── Builders/                       BookingBuilder
+├── Discounts/                      IDiscount and its implementations
+├── Repositories/                   IBookingRepository, InMemoryBookingRepository
+├── Services/                       PriceCalculator, TicketPrinter, BookingService
+├── Payments/
 │   ├── IPaymentMethod.cs
 │   ├── CardPayment.cs
-│   └── PayPalPayment.cs
-├── Repositories/                   DIP: pluggable storage
-│   ├── IBookingRepository.cs
-│   └── InMemoryBookingRepository.cs
-└── Services/                       SRP: one job per class
-    ├── PriceCalculator.cs
-    ├── TicketPrinter.cs
-    └── BookingService.cs
+│   ├── PayPalPayment.cs
+│   ├── QuickPayAdapter.cs          ADAPTER
+│   └── External/
+│       └── QuickPayClient.cs       the third-party SDK being adapted
+├── Orders/                         DECORATOR
+│   ├── IBookingOrder.cs            component (+ OrderLine)
+│   ├── TicketsOrder.cs             concrete component
+│   ├── OrderExtra.cs               base decorator
+│   ├── PopcornExtra.cs             concrete decorators
+│   ├── DrinkExtra.cs
+│   ├── Glasses3DExtra.cs
+│   └── Extra.cs                    Extra enum + ExtraCatalog
+└── Facade/                         FACADE
+    └── CinemaFacade.cs
 ```
 
-## Lab 0 — SOLID principles
+## Implementation
 
-### 1. Single Responsibility Principle (SRP)
+### 1. Adapter — `QuickPayAdapter`
 
-> A class should have only one reason to change.
+**Problem.** The cinema wants to accept payments through an external provider.
+Its SDK (`QuickPayClient`, simulated in `Payments/External/`) cannot be
+modified, and its API does not match what the application expects:
 
-`Booking` is a pure data holder. It does not know how to price itself, store
-itself or print itself. Each of those concerns has its own class:
+| The application expects (`IPaymentMethod`) | The SDK offers (`QuickPayClient`)                       |
+|--------------------------------------------|---------------------------------------------------------|
+| `bool Pay(decimal amount)`                 | `QuickPayReceipt SubmitCharge(long, string, string)`    |
+| amount in MDL, as a `decimal`              | amount in bani, as a whole number                       |
+| nothing else needed                        | a currency code and a merchant reference on every call  |
+| success as `true` / `false`                | a receipt with a numeric status code                    |
 
-| Class                       | Its one job                                  |
-|-----------------------------|----------------------------------------------|
-| `Booking`                   | hold the customer, screening and seats       |
-| `PriceCalculator`           | work out the total cost                      |
-| `InMemoryBookingRepository` | store and retrieve bookings                  |
-| `TicketPrinter`             | format and print a ticket                    |
-| `BookingService`            | orchestrate the booking flow                 |
+Rewriting `BookingService` to call the SDK directly would tie the booking
+flow to one provider.
 
-If the ticket layout changes, only `TicketPrinter` is touched. If storage
-moves to a database, only the repository changes.
-
-### 2. Open/Closed Principle (OCP)
-
-> Software entities should be open for extension but closed for modification.
-
-Discounts are expressed through the `IDiscount` interface:
+**Solution.** `QuickPayAdapter` implements `IPaymentMethod` and holds a
+`QuickPayClient`. It translates each call on the way in and the result on the
+way out:
 
 ```csharp
-public interface IDiscount
+public class QuickPayAdapter : IPaymentMethod
 {
-    string Name { get; }
-    bool IsApplicable(Booking booking);
-    decimal Apply(Booking booking, decimal currentPrice);
+    private readonly QuickPayClient _client;
+    private readonly string _reference;
+
+    public bool Pay(decimal amount)
+    {
+        long minorUnits = (long)Math.Round(amount * 100m, MidpointRounding.AwayFromZero);
+        QuickPayReceipt receipt = _client.SubmitCharge(minorUnits, "MDL", _reference);
+        return receipt.StatusCode == 200;
+    }
 }
 ```
 
-`PriceCalculator` simply iterates over the discounts it is given. To add a
-new rule — say a `SeniorDiscount` or a `PremiereSurcharge` — you write a new
-class and register it in `Program.cs`. `PriceCalculator` is never edited.
+`BookingService` receives the adapter like any other payment method and
+cannot tell the difference. This is the *object adapter* form: the adaptee is
+a field, not a base class.
 
-### 3. Dependency Inversion Principle (DIP)
+<p align="center"><img src="docs/uml/adapter.png" alt="UML class diagram of the Adapter pattern" width="620"></p>
 
-> High-level modules should not depend on low-level modules; both should
-> depend on abstractions.
+| Role    | Class             |
+|---------|-------------------|
+| Client  | `BookingService`  |
+| Target  | `IPaymentMethod`  |
+| Adapter | `QuickPayAdapter` |
+| Adaptee | `QuickPayClient`  |
 
-`BookingService` is the high-level policy. It receives everything it needs
-through its constructor as abstractions:
+### 2. Decorator — order extras
 
-```csharp
-public BookingService(
-    PriceCalculator priceCalculator,
-    IBookingRepository repository,
-    IPaymentMethod paymentMethod)
-```
+**Problem.** Customers can add extras to a booking: popcorn, a drink, 3D
+glasses, in any combination and quantity. Modelling this with inheritance
+(`BookingWithPopcorn`, `BookingWithPopcornAndDrink`, ...) needs a class per
+combination, and putting `bool hasPopcorn, int drinks, ...` fields into
+`Booking` means editing it for every new product.
 
-It has no idea whether the money comes from a card or PayPal, or whether
-bookings live in memory or in SQL. The concrete classes are chosen in one
-place (`Program.cs`, the composition root) and injected. The demo runs the
-same `BookingService` class once with `CardPayment` and once with
-`PayPalPayment` without a single line of the service changing.
-
-## Lab 1 — Creational patterns
-
-Creational patterns deal with *how objects get created*. Three of them were
-chosen because each solves a real problem that the Lab 0 code already had.
-
-### 1. Singleton — `CinemaSchedule`
-
-**Problem.** The cinema has exactly one timetable. If two parts of the app
-each built their own list of screenings, they would also each have their own
-copy of the seats, and two customers could end up with the same seat.
-
-**Solution.** `CinemaSchedule` can only be reached through
-`CinemaSchedule.Instance`:
+**Solution.** What the customer pays for is an `IBookingOrder`. The plain
+tickets are one implementation (`TicketsOrder`). Each extra is another
+implementation that *wraps* an `IBookingOrder` and adds its own line and
+price on top:
 
 ```csharp
-public sealed class CinemaSchedule
+public abstract class OrderExtra : IBookingOrder
 {
-    private static readonly Lazy<CinemaSchedule> _instance = new(() => new CinemaSchedule());
-    public static CinemaSchedule Instance => _instance.Value;
+    private readonly IBookingOrder _inner;
 
-    private CinemaSchedule() { }
-    ...
+    protected abstract string Label { get; }
+    protected abstract decimal ExtraPrice { get; }
+
+    public Booking Booking => _inner.Booking;
+    public IReadOnlyList<OrderLine> Lines => _inner.Lines.Append(new OrderLine(Label, ExtraPrice)).ToList();
+    public decimal Total => _inner.Total + ExtraPrice;
+}
+
+public class PopcornExtra : OrderExtra
+{
+    public PopcornExtra(IBookingOrder inner) : base(inner) { }
+    protected override string Label => "Large popcorn";
+    protected override decimal ExtraPrice => 60m;
 }
 ```
 
-- the **private constructor** makes `new CinemaSchedule()` a compile error
-  anywhere else;
-- **`Lazy<T>`** creates the instance on first use and is thread-safe by
-  default, so no hand-written locking is needed;
-- **`sealed`** prevents a subclass from smuggling in a second instance.
-
-The demo fetches `Instance` twice, shows `ReferenceEquals` is `true`, then
-adds a screening through one reference and reads the new count through the
-other.
-
-### 2. Factory Method — `HallLayout.CreateSeat()`
-
-**Problem.** In Lab 0 `Screening` built its seats with `new Seat(...)` in a
-loop. Introducing VIP seats would have meant putting `if (isVipRow)` logic
-inside `Screening`, and every new seat type would grow that `if` chain.
-
-**Solution.** Seat creation is delegated to a *creator* hierarchy:
-
-```
-HallLayout (abstract)                      Seat (abstract)
- ├─ GenerateSeats()   ── uses ──►  CreateSeat()  ──creates──►  ├─ StandardSeat
- ├─ StandardHallLayout : CreateSeat() → StandardSeat            └─ VipSeat
- └─ PremiumHallLayout  : CreateSeat() → VipSeat for the last N rows
-```
-
-`HallLayout.GenerateSeats()` holds the shared algorithm (walk rows ×
-numbers) and calls the abstract `CreateSeat(row, number)` for each position.
-Each subclass overrides only that one method. `Screening` just receives a
-`HallLayout` and asks it for seats; it never names a concrete seat class.
-
-A side benefit: each `Seat` subclass carries its own `PriceMultiplier`, so
-`PriceCalculator` prices a VIP seat correctly without knowing VIP exists.
-
-### 3. Builder — `BookingBuilder`
-
-**Problem.** A booking is assembled gradually: the customer is known first,
-then the screening, then seats are clicked one at a time, then maybe a note.
-In Lab 0 all of this was squeezed into `BookingService.Book(customer,
-screening, seatLabels)`, mixing *construction* with *processing*.
-
-**Solution.** A fluent builder collects the parts and validates them once,
-in `Build()`:
+Extras are stacked at run time, in any order, and the same one can be applied
+more than once:
 
 ```csharp
-var booking = new BookingBuilder()
-    .ForCustomer(ana)
-    .ForScreening(schedule.FindById(1)!)
-    .AddSeat("B3")
-    .AddSeat("C3")
-    .WithNote("Birthday outing")
-    .Build();          // throws if anything is missing or a seat is invalid
-
-bookingService.Confirm(booking);   // price -> pay -> reserve -> save
+IBookingOrder order = new TicketsOrder(booking, ticketsPrice);
+order = new PopcornExtra(order);
+order = new DrinkExtra(order);
+order = new DrinkExtra(order);
+order = new Glasses3DExtra(order);   // priced per seat, read from the wrapped order
 ```
 
-`Build()` checks that a customer and a screening were set, that at least one
-seat was added, that no seat was added twice, that every seat exists in the
-hall, and that none is already taken. A `Booking` object therefore can never
-exist in a half-built or invalid state. `BookingService` shrank to its real
-job: pricing, payment, reservation and persistence.
+`BookingService` and `TicketPrinter` work only with `IBookingOrder`, so they
+handle an order with zero extras or ten extras with the same code. A new
+extra is one small class; nothing existing changes.
 
-### Patterns considered but not used (yet)
+<p align="center"><img src="docs/uml/decorator.png" alt="UML class diagram of the Decorator pattern" width="700"></p>
 
-- **Abstract Factory** would make sense once halls need *families* of
-  related objects (seats + screen + sound system), not just seats.
-- **Prototype** fits cloning a template `Screening` across a week of
-  identical time slots - a good candidate for a later lab.
-- **Object Pool** is unnecessary here; seat objects are cheap to create.
+| Role                | Class                                           |
+|---------------------|-------------------------------------------------|
+| Component           | `IBookingOrder`                                 |
+| Concrete component  | `TicketsOrder`                                  |
+| Decorator           | `OrderExtra`                                    |
+| Concrete decorators | `PopcornExtra`, `DrinkExtra`, `Glasses3DExtra`  |
 
-## Running the project
+### 3. Facade — `CinemaFacade`
 
-Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download).
+**Problem.** Buying a ticket takes seven collaborating objects in a fixed
+sequence: find the screening in `CinemaSchedule`, assemble the booking with
+`BookingBuilder`, price it with `PriceCalculator`, wrap it in extras, confirm
+it through `BookingService` (which pays and saves through
+`IBookingRepository`), and print it with `TicketPrinter`. Every client
+(the console demo now, a GUI or web API later) would have to repeat that
+sequence and know all of those classes.
+
+**Solution.** `CinemaFacade` knows the sequence and exposes it as one call:
+
+```csharp
+var cinema = new CinemaFacade(priceCalculator, repository, printer);
+
+cinema.BookTickets(
+    maria,
+    1,                                      // screening id
+    new[] { "B3", "C3" },                   // seats
+    new CardPayment("4111222233334444"),    // any IPaymentMethod
+    Extra.Popcorn, Extra.Drink, Extra.Glasses3D);
+```
+
+It also offers `ShowProgramme()`, `ShowSeatMap(id)` and `ShowSummary()`. The
+facade contains no business rules of its own; it only coordinates. Errors from
+the subsystem (unknown screening, taken seat, failed payment) pass through
+unchanged, and the subsystem classes stay public for anything the facade does
+not cover.
+
+<p align="center"><img src="docs/uml/facade.png" alt="UML class diagram of the Facade pattern" width="760"></p>
+
+| Role      | Class                                                                                                        |
+|-----------|--------------------------------------------------------------------------------------------------------------|
+| Client    | `Program`                                                                                                    |
+| Facade    | `CinemaFacade`                                                                                               |
+| Subsystem | `CinemaSchedule`, `BookingBuilder`, `PriceCalculator`, `ExtraCatalog`, `BookingService`, `IBookingRepository`, `TicketPrinter` |
+
+### How the three work together
+
+In one `BookTickets` call the facade builds a `TicketsOrder`, wraps it in the
+requested decorators, and hands it to `BookingService` together with a
+payment method that may be the QuickPay adapter. Each pattern hides one kind
+of detail from the others: the facade hides the *sequence*, the decorator
+hides *how many extras* there are, and the adapter hides *whose API* takes the
+money.
+
+## Results
+
+Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download) or newer.
 
 ```bash
 cd CinemaBooking
 dotnet run
 ```
 
-The demo walks through the three patterns in order: proves the schedule is a
-single shared instance, prints the seat types each hall layout produced, then
-builds and confirms two bookings (one with a VIP seat and a student discount,
-one on a Tuesday via PayPal) and shows four invalid bookings being rejected
-by the builder.
+The demo has three parts:
 
-## What comes next
+1. **Decorator** — wraps a tickets order one extra at a time and prints the
+   total after each layer, then the full list of receipt lines.
+2. **Adapter** — calls the SDK directly to show its API, pays for a booking
+   through `QuickPayAdapter`, then attempts a booking above the provider's
+   500 MDL limit: the SDK returns status 402, the adapter turns it into
+   `false`, and the seats stay free.
+3. **Facade** — books two seats with three extras in a single call, prints the
+   seat map, and shows two invalid requests being rejected.
 
-The structure already leaves room for the patterns planned in later labs:
-discounts are a natural **Strategy**, seat add-ons fit **Decorator**,
-screening changes fit **Observer**, the booking lifecycle fits **State**,
-and `BookingService` could become a **Facade** over the whole flow.
+## Conclusions
+
+- **Adapter** let the project use a third-party payment API without changing
+  either side. The cost is one small class, and replacing the provider later
+  means writing another adapter, not touching the booking flow.
+- **Decorator** replaced a potential explosion of subclasses or flags with
+  small wrappers that are combined at run time. It works because every wrapper
+  keeps the interface of what it wraps.
+- **Facade** reduced the client's knowledge of the system from seven classes
+  and their call order to one method. It makes the common case easy without
+  hiding the subsystem from code that needs more control.
+- All three patterns relied on abstractions already in the project
+  (`IPaymentMethod`, `IBookingRepository`), which is what made it possible to
+  add them without rewriting existing classes.

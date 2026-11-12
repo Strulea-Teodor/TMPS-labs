@@ -1,8 +1,11 @@
 using CinemaBooking.Builders;
 using CinemaBooking.Discounts;
 using CinemaBooking.Domain;
+using CinemaBooking.Facade;
 using CinemaBooking.Halls;
+using CinemaBooking.Orders;
 using CinemaBooking.Payments;
+using CinemaBooking.Payments.External;
 using CinemaBooking.Repositories;
 using CinemaBooking.Schedule;
 using CinemaBooking.Services;
@@ -13,7 +16,7 @@ public static class Program
 {
     public static void Main()
     {
-        Console.WriteLine("=== Cinema Booking System - Lab 1 (Creational patterns) ===\n");
+        Console.WriteLine("=== Cinema Booking System - Lab 2 (Structural patterns) ===\n");
 
         // --- Wire up dependencies (composition root) -----------------------
         var discounts = new List<IDiscount> { new StudentDiscount(), new TuesdayDiscount() };
@@ -23,104 +26,122 @@ public static class Program
 
         SeedSchedule();
 
-        DemoSingleton();
-        DemoFactoryMethod();
-        DemoBuilder(priceCalculator, repository, printer);
-
-        Console.WriteLine($"Total bookings stored: {repository.GetAll().Count}");
-        Console.WriteLine($"Free seats across the cinema: {CinemaSchedule.Instance.TotalFreeSeats}");
+        DemoDecorator(priceCalculator);
+        DemoAdapter(priceCalculator, repository, printer);
+        DemoFacade(priceCalculator, repository, printer);
     }
 
     // ----------------------------------------------------------------------
-    // SINGLETON: there is one CinemaSchedule. Both references below are the
-    // same object, so a screening added through one is visible through the other.
+    // DECORATOR: extras are wrapped around a tickets order one layer at a
+    // time. Every layer is still an IBookingOrder, so Total and Lines keep
+    // working no matter how many layers there are.
     // ----------------------------------------------------------------------
-    private static void DemoSingleton()
+    private static void DemoDecorator(PriceCalculator priceCalculator)
     {
-        Header("1. SINGLETON - CinemaSchedule");
+        Header("1. DECORATOR - order extras");
 
-        var a = CinemaSchedule.Instance;
-        var b = CinemaSchedule.Instance;
+        var ana = new Customer("Ana Popescu", "ana@example.com", isStudent: true);
+        var booking = new BookingBuilder()
+            .ForCustomer(ana)
+            .ForScreening(CinemaSchedule.Instance.FindById(1)!)
+            .AddSeats("A1", "A2")
+            .Build();
 
-        Console.WriteLine($"  Same instance?            {ReferenceEquals(a, b)}");
-        Console.WriteLine($"  Screenings via 'b':       {b.Screenings.Count}");
+        IBookingOrder order = new TicketsOrder(booking, priceCalculator.Calculate(booking));
+        ShowOrder("tickets only", order);
 
-        // Add through 'a', observe through 'b' - there is only one list underneath.
-        a.AddScreening(new Movie("Late-night classic", 95, "Horror"),
-                       NextWeekday(DayOfWeek.Friday).AddHours(23), 70m,
-                       new StandardHallLayout(rows: 2, seatsPerRow: 4));
+        order = new PopcornExtra(order);
+        ShowOrder("+ popcorn", order);
 
-        Console.WriteLine($"  ...after a.AddScreening(): {b.Screenings.Count}");
-        Console.WriteLine("  // new CinemaSchedule() does not compile - the constructor is private.\n");
+        order = new DrinkExtra(order);
+        ShowOrder("+ drink", order);
 
-        Console.WriteLine("  Schedule:");
-        foreach (var s in a.Screenings)
-            Console.WriteLine("    " + s);
-        Console.WriteLine();
+        order = new DrinkExtra(order);              // the same decorator can be applied twice
+        ShowOrder("+ second drink", order);
+
+        order = new Glasses3DExtra(order);          // priced per seat, read from the wrapped order
+        ShowOrder("+ 3D glasses", order);
+
+        Console.WriteLine("\n  Receipt lines of the fully wrapped order:");
+        foreach (var line in order.Lines)
+            Console.WriteLine($"    {line.Description,-18}{line.Amount,8:0.00} MDL");
+        Console.WriteLine("  (nothing was paid or reserved here - this only shows the wrapping)\n");
     }
 
     // ----------------------------------------------------------------------
-    // FACTORY METHOD: Screening asks its HallLayout for seats. The layout
-    // subclass decides which Seat subclass to create for each position.
+    // ADAPTER: BookingService expects an IPaymentMethod. The QuickPay SDK has
+    // a completely different API. QuickPayAdapter makes one look like the other.
     // ----------------------------------------------------------------------
-    private static void DemoFactoryMethod()
+    private static void DemoAdapter(PriceCalculator priceCalculator, IBookingRepository repository, TicketPrinter printer)
     {
-        Header("2. FACTORY METHOD - HallLayout.CreateSeat()");
-
-        foreach (var screening in CinemaSchedule.Instance.Screenings)
-        {
-            var byCategory = screening.Seats
-                .GroupBy(s => s.Category)
-                .Select(g => $"{g.Count()} x {g.Key} (x{g.First().PriceMultiplier})");
-
-            Console.WriteLine($"  Screening #{screening.Id} / {screening.Hall.Name}:");
-            Console.WriteLine($"    {string.Join(", ", byCategory)}");
-            Console.WriteLine($"    Layout: {RenderSeatMap(screening)}");
-        }
-        Console.WriteLine();
-    }
-
-    // ----------------------------------------------------------------------
-    // BUILDER: a Booking is assembled fluently, validated in Build(), and
-    // only then handed to BookingService.
-    // ----------------------------------------------------------------------
-    private static void DemoBuilder(PriceCalculator priceCalculator, IBookingRepository repository, TicketPrinter printer)
-    {
-        Header("3. BUILDER - BookingBuilder");
+        Header("2. ADAPTER - third-party QuickPay SDK as an IPaymentMethod");
 
         var schedule = CinemaSchedule.Instance;
-        var ana = new Customer("Ana Popescu", "ana@example.com", isStudent: true);
         var ion = new Customer("Ion Rusu", "ion@example.com");
+        var quickPay = new QuickPayClient(merchantId: "CINEMA42");      // the incompatible third-party object
 
-        // Scenario A: student books two seats in the premium hall, one of them VIP, pays by card.
-        Console.WriteLine("  Scenario A: Ana (student) -> Dune, seats B3 + C3 (VIP), card");
-        var bookingA = new BookingBuilder()
-            .ForCustomer(ana)
-            .ForScreening(schedule.FindById(1)!)
-            .AddSeat("B3")
-            .AddSeat("c3")                       // labels are normalised to upper-case
-            .WithNote("Birthday outing")
-            .Build();
+        // The SDK on its own - note the different method, units and return type.
+        var raw = quickPay.SubmitCharge(amountMinorUnits: 100, currencyIso: "MDL", reference: "connection test");
+        Console.WriteLine($"  Raw SDK call:   SubmitCharge(100, \"MDL\", ...) -> {raw.StatusCode} {raw.Message}");
+        Console.WriteLine("  Our interface:  bool Pay(decimal amount)\n");
 
-        Confirm(bookingA, new CardPayment("4111222233334444"), priceCalculator, repository, printer);
+        // Scenario A: adapted payment succeeds. BookingService is unchanged and unaware.
+        Console.WriteLine("  Scenario A: Ion -> Paddington on Tuesday, seat B2, QuickPay");
+        IPaymentMethod payment = new QuickPayAdapter(quickPay, reference: "Ion Rusu / screening 2");
+        var service = new BookingService(priceCalculator, repository, payment);
 
-        // Scenario B: regular customer, Tuesday screening, PayPal. Same BookingService class, different IPaymentMethod injected (DIP).
-        Console.WriteLine("  Scenario B: Ion -> Paddington on Tuesday, seat A1, PayPal");
-        var bookingB = new BookingBuilder()
+        var booking = new BookingBuilder().ForCustomer(ion).ForScreening(schedule.FindById(2)!).AddSeat("B2").Build();
+        service.Confirm(booking);
+        printer.Print(new TicketsOrder(booking, booking.TotalPrice));
+
+        // Scenario B: the SDK declines (over its 500 MDL limit). The adapter turns the
+        // status code into `false`, and the service reacts exactly as for any other failure.
+        Console.WriteLine("  Scenario B: Ion -> Oppenheimer, 4 VIP seats (660 MDL), QuickPay limit is 500 MDL");
+        var bigBooking = new BookingBuilder()
             .ForCustomer(ion)
-            .ForScreening(schedule.FindById(2)!)
-            .AddSeats("A1")
+            .ForScreening(schedule.FindById(3)!)
+            .AddSeats("D1", "D2", "D3", "D4")
             .Build();
+        try
+        {
+            service.Confirm(bigBooking);
+        }
+        catch (InvalidOperationException ex)
+        {
+            Console.WriteLine($"  Rejected: {ex.Message}");
+            Console.WriteLine($"  Seat D1 still free? {!schedule.FindById(3)!.FindSeat("D1")!.IsTaken}\n");
+        }
+    }
 
-        Confirm(bookingB, new PayPalPayment("ion@example.com"), priceCalculator, repository, printer);
+    // ----------------------------------------------------------------------
+    // FACADE: the same purchase flow as above, but the client makes ONE call
+    // and never touches the builder, calculator, decorators, service or printer.
+    // ----------------------------------------------------------------------
+    private static void DemoFacade(PriceCalculator priceCalculator, IBookingRepository repository, TicketPrinter printer)
+    {
+        Header("3. FACADE - CinemaFacade");
 
-        // Scenario C: the builder refuses to build an invalid booking.
-        Console.WriteLine("  Scenario C: builder validation");
-        TryBuild("missing screening", () => new BookingBuilder().ForCustomer(ion).AddSeat("A1").Build());
-        TryBuild("seat B3 already taken", () => new BookingBuilder().ForCustomer(ion).ForScreening(schedule.FindById(1)!).AddSeat("B3").Build());
-        TryBuild("seat Z9 does not exist", () => new BookingBuilder().ForCustomer(ion).ForScreening(schedule.FindById(1)!).AddSeat("Z9").Build());
-        TryBuild("same seat twice", () => new BookingBuilder().ForCustomer(ion).ForScreening(schedule.FindById(3)!).AddSeats("A1", "A1").Build());
+        var cinema = new CinemaFacade(priceCalculator, repository, printer);
+        var maria = new Customer("Maria Ceban", "maria@example.com", isStudent: true);
+
+        cinema.ShowProgramme();
+
+        Console.WriteLine("  One call: Maria (student) -> Dune, B3 + C3 (VIP), card, popcorn + drink + 3D glasses");
+        cinema.BookTickets(
+            maria,
+            1,                                      // screening id
+            new[] { "B3", "C3" },                   // seats
+            new CardPayment("4111222233334444"),    // any IPaymentMethod
+            Extra.Popcorn, Extra.Drink, Extra.Glasses3D);
+
+        cinema.ShowSeatMap(1);
+
+        Console.WriteLine("  The facade passes subsystem errors through unchanged:");
+        TryBook("screening #99", () => cinema.BookTickets(maria, 99, new[] { "A1" }, new CardPayment("4111222233334444")));
+        TryBook("seat B3 again", () => cinema.BookTickets(maria, 1, new[] { "B3" }, new CardPayment("4111222233334444")));
         Console.WriteLine();
+
+        cinema.ShowSummary();
     }
 
     // ----------------------------------------------------------------------
@@ -137,48 +158,25 @@ public static class Program
         var nextTuesday  = NextWeekday(DayOfWeek.Tuesday);
         var nextSaturday = NextWeekday(DayOfWeek.Saturday);
 
-        // Each screening is given a HallLayout; the layout's factory method decides the seat types.
         schedule.AddScreening(dune,        nextSaturday.AddHours(19), 120m, new PremiumHallLayout(rows: 3, seatsPerRow: 6, vipRows: 1));
         schedule.AddScreening(paddington,  nextTuesday.AddHours(17),   90m, new StandardHallLayout(rows: 2, seatsPerRow: 5));
         schedule.AddScreening(oppenheimer, nextSaturday.AddHours(21), 110m, new PremiumHallLayout(rows: 4, seatsPerRow: 6, vipRows: 2));
     }
 
-    private static void Confirm(
-        Booking booking,
-        IPaymentMethod payment,
-        PriceCalculator priceCalculator,
-        IBookingRepository repository,
-        TicketPrinter printer)
-    {
-        var service = new BookingService(priceCalculator, repository, payment);
-        service.Confirm(booking);
+    private static void ShowOrder(string label, IBookingOrder order) =>
+        Console.WriteLine($"  {label,-16} total = {order.Total,7:0.00} MDL   ({order.Lines.Count} line{(order.Lines.Count == 1 ? "" : "s")})");
 
-        var applied = priceCalculator.ApplicableDiscounts(booking).ToList();
-        Console.WriteLine("  Discounts applied: " + (applied.Count > 0 ? string.Join("; ", applied) : "none"));
-
-        printer.Print(booking);
-    }
-
-    private static void TryBuild(string label, Func<Booking> build)
+    private static void TryBook(string label, Action book)
     {
         try
         {
-            build();
-            Console.WriteLine($"    {label,-28} -> built (unexpected!)");
+            book();
+            Console.WriteLine($"    {label,-16} -> booked (unexpected!)");
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
         {
-            Console.WriteLine($"    {label,-28} -> rejected: {ex.Message}");
+            Console.WriteLine($"    {label,-16} -> rejected: {ex.Message}");
         }
-    }
-
-    private static string RenderSeatMap(Screening screening)
-    {
-        // One character per seat, row by row: '.' standard free, 'V' VIP free, '#' taken.
-        var rows = screening.Seats.GroupBy(s => s.Row).OrderBy(g => g.Key);
-        return string.Join(" | ", rows.Select(r =>
-            $"{r.Key}: " + string.Concat(r.OrderBy(s => s.Number).Select(s =>
-                s.IsTaken ? '#' : (s is VipSeat) ? 'V' : '.'))));
     }
 
     private static DateTime NextWeekday(DayOfWeek day)

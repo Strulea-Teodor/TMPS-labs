@@ -1,0 +1,41 @@
+classDiagram
+    direction LR
+    class Program {
+        +Main() void
+    }
+    class CinemaFacade {
+        +ShowProgramme() void
+        +ShowSeatMap(int screeningId) void
+        +BookTickets(customer, screeningId, seats, payment, extras) Booking
+        +ShowSummary() void
+    }
+    class CinemaSchedule {
+        +FindById(int) Screening
+    }
+    class BookingBuilder {
+        +Build() Booking
+    }
+    class PriceCalculator {
+        +Calculate(Booking) decimal
+    }
+    class ExtraCatalog {
+        +Add(IBookingOrder, Extra) IBookingOrder
+    }
+    class BookingService {
+        +Confirm(IBookingOrder) Booking
+    }
+    class IBookingRepository {
+        <<interface>>
+        +GetAll() IReadOnlyList~Booking~
+    }
+    class TicketPrinter {
+        +Print(IBookingOrder) void
+    }
+    Program ..> CinemaFacade : one simple call
+    CinemaFacade --> CinemaSchedule : 1 find screening
+    CinemaFacade --> BookingBuilder : 2 build booking
+    CinemaFacade --> PriceCalculator : 3 price tickets
+    CinemaFacade --> ExtraCatalog : 4 add extras
+    CinemaFacade --> BookingService : 5 pay and reserve
+    CinemaFacade --> IBookingRepository : summary
+    CinemaFacade --> TicketPrinter : 6 print ticket

@@ -1,18 +1,21 @@
 using CinemaBooking.Domain;
+using CinemaBooking.Orders;
 using CinemaBooking.Payments;
 using CinemaBooking.Repositories;
 
 namespace CinemaBooking.Services;
 
 /// <summary>
-/// Orchestrates the booking flow: calculate price -> pay -> reserve seats -> save.
+/// Processes an order: pay -> reserve seats -> save.
 ///
 /// DIP: this high-level class depends only on abstractions
-/// (IPaymentMethod, IBookingRepository). The concrete implementations are
-/// injected through the constructor, so they can be swapped freely.
+/// (IPaymentMethod, IBookingRepository, IBookingOrder). The concrete
+/// implementations are injected, so they can be swapped freely.
 ///
-/// Lab 1: the "assemble and validate" step moved out into BookingBuilder,
-/// so this service receives a fully formed Booking and only has to process it.
+/// Lab 2: the service now charges an IBookingOrder instead of a bare Booking.
+/// Whether the order is plain tickets or tickets wrapped in three extras makes
+/// no difference here (Decorator), and neither does whether the payment method
+/// is one of ours or an adapted third-party SDK (Adapter).
 /// </summary>
 public class BookingService
 {
@@ -30,8 +33,14 @@ public class BookingService
         _paymentMethod = paymentMethod;
     }
 
-    public Booking Confirm(Booking booking)
+    /// <summary>Confirms a booking with no extras: tickets only.</summary>
+    public Booking Confirm(Booking booking) =>
+        Confirm(new TicketsOrder(booking, _priceCalculator.Calculate(booking)));
+
+    public Booking Confirm(IBookingOrder order)
     {
+        var booking = order.Booking;
+
         // Guard against a race: the builder checked availability at build time,
         // but another booking could have taken a seat since then.
         var alreadyTaken = booking.Seats.Where(s => s.IsTaken).ToList();
@@ -39,8 +48,8 @@ public class BookingService
             throw new InvalidOperationException(
                 $"Seat(s) no longer available: {string.Join(", ", alreadyTaken.Select(s => s.Label))}.");
 
-        // 1. Price it.
-        booking.TotalPrice = _priceCalculator.Calculate(booking);
+        // 1. The order already knows its total (tickets + any extras).
+        booking.TotalPrice = order.Total;
 
         // 2. Take payment through whatever method was injected.
         Console.WriteLine($"  Paying with {_paymentMethod.Name}:");
