@@ -1,0 +1,24 @@
+classDiagram
+    direction TB
+    class CinemaSchedule {
+        <<sealed>>
+        -Lazy~CinemaSchedule~ _instance$
+        -List~Screening~ _screenings
+        -CinemaSchedule()
+        +CinemaSchedule Instance$
+        +IReadOnlyList~Screening~ Screenings
+        +AddScreening(Movie, DateTime, decimal, HallLayout) Screening
+        +FindById(int) Screening
+    }
+    class Screening {
+        +int Id
+        +Movie Movie
+        +DateTime StartTime
+    }
+    class Program {
+        +Main() void
+    }
+    CinemaSchedule --> CinemaSchedule : the single instance
+    CinemaSchedule o--> "0..*" Screening : holds
+    Program ..> CinemaSchedule : CinemaSchedule.Instance
+    note for CinemaSchedule "Private constructor: no one else can create it"

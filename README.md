@@ -1,33 +1,34 @@
-# TMPS Labs — Cinema Booking System
+# Laboratory Work 1 — Creational Design Patterns
 
 **Course:** Tehnici și Mecanisme de Proiectare Software (TMPS)
 **Author:** Teodor Strulea, FAF-242
 **Language:** C# (.NET 8)
+**Project:** Cinema Booking System
 
-## About the project
+## Objectives
 
-This repository holds a single pet project that grows over the whole semester:
-a **cinema ticket booking system**. Customers pick a screening, choose seats,
-get discounts applied, pay, and receive a ticket.
+1. Study the creational design patterns and understand what problem each one solves.
+2. Choose three of them and implement them in the semester project.
+3. Use each pattern where the project has a real need for it, not for its own sake.
 
-The domain is deliberately simple so that the focus stays on *how* the code is
-designed rather than *what* it does. Each lab adds a new layer of design to the
-same codebase:
+Patterns implemented in this laboratory work: **Singleton**, **Factory Method** and **Builder**.
 
-| Lab   | Branch   | Topic                                                           |
-|-------|----------|-----------------------------------------------------------------|
-| Lab 0 | `Lab-0`  | Project setup + 3 SOLID principles (SRP, OCP, DIP)              |
-| Lab 1 | `Lab-1`  | Creational patterns: Singleton, Factory Method, Builder         |
-| Lab 2+| `Lab-N`  | Structural and behavioral design patterns                       |
+## Theory
 
-Each lab lives on its own branch so the evolution of the design is easy to follow.
+Creational patterns deal with *how objects get created*. Calling `new` on
+concrete classes all over the code ties every caller to those classes. These
+patterns move the decision of *which* class to create, *how* to assemble it
+and *how many* instances may exist into one well-defined place.
 
-## Project structure
+## The project
+
+A cinema ticket booking system: customers pick a screening, choose seats, get
+discounts applied, pay, and receive a ticket.
 
 ```
 CinemaBooking/
-├── Program.cs                      composition root + demo scenarios
-├── Domain/                         data classes that guard only their own invariants
+├── Program.cs                      composition root + demo of the three patterns
+├── Domain/
 │   ├── Movie.cs
 │   ├── Screening.cs
 │   ├── Seat.cs                     abstract product (Factory Method)
@@ -43,87 +44,13 @@ CinemaBooking/
 │   └── CinemaSchedule.cs
 ├── Builders/                       BUILDER
 │   └── BookingBuilder.cs
-├── Discounts/                      OCP: pluggable pricing rules
-│   ├── IDiscount.cs
-│   ├── StudentDiscount.cs
-│   └── TuesdayDiscount.cs
-├── Payments/                       DIP: pluggable payment methods
-│   ├── IPaymentMethod.cs
-│   ├── CardPayment.cs
-│   └── PayPalPayment.cs
-├── Repositories/                   DIP: pluggable storage
-│   ├── IBookingRepository.cs
-│   └── InMemoryBookingRepository.cs
-└── Services/                       SRP: one job per class
-    ├── PriceCalculator.cs
-    ├── TicketPrinter.cs
-    └── BookingService.cs
+├── Discounts/                      IDiscount and its implementations
+├── Payments/                       IPaymentMethod and its implementations
+├── Repositories/                   IBookingRepository, InMemoryBookingRepository
+└── Services/                       PriceCalculator, TicketPrinter, BookingService
 ```
 
-## Lab 0 — SOLID principles
-
-### 1. Single Responsibility Principle (SRP)
-
-> A class should have only one reason to change.
-
-`Booking` is a pure data holder. It does not know how to price itself, store
-itself or print itself. Each of those concerns has its own class:
-
-| Class                       | Its one job                                  |
-|-----------------------------|----------------------------------------------|
-| `Booking`                   | hold the customer, screening and seats       |
-| `PriceCalculator`           | work out the total cost                      |
-| `InMemoryBookingRepository` | store and retrieve bookings                  |
-| `TicketPrinter`             | format and print a ticket                    |
-| `BookingService`            | orchestrate the booking flow                 |
-
-If the ticket layout changes, only `TicketPrinter` is touched. If storage
-moves to a database, only the repository changes.
-
-### 2. Open/Closed Principle (OCP)
-
-> Software entities should be open for extension but closed for modification.
-
-Discounts are expressed through the `IDiscount` interface:
-
-```csharp
-public interface IDiscount
-{
-    string Name { get; }
-    bool IsApplicable(Booking booking);
-    decimal Apply(Booking booking, decimal currentPrice);
-}
-```
-
-`PriceCalculator` simply iterates over the discounts it is given. To add a
-new rule — say a `SeniorDiscount` or a `PremiereSurcharge` — you write a new
-class and register it in `Program.cs`. `PriceCalculator` is never edited.
-
-### 3. Dependency Inversion Principle (DIP)
-
-> High-level modules should not depend on low-level modules; both should
-> depend on abstractions.
-
-`BookingService` is the high-level policy. It receives everything it needs
-through its constructor as abstractions:
-
-```csharp
-public BookingService(
-    PriceCalculator priceCalculator,
-    IBookingRepository repository,
-    IPaymentMethod paymentMethod)
-```
-
-It has no idea whether the money comes from a card or PayPal, or whether
-bookings live in memory or in SQL. The concrete classes are chosen in one
-place (`Program.cs`, the composition root) and injected. The demo runs the
-same `BookingService` class once with `CardPayment` and once with
-`PayPalPayment` without a single line of the service changing.
-
-## Lab 1 — Creational patterns
-
-Creational patterns deal with *how objects get created*. Three of them were
-chosen because each solves a real problem that the Lab 0 code already had.
+## Implementation
 
 ### 1. Singleton — `CinemaSchedule`
 
@@ -155,35 +82,63 @@ The demo fetches `Instance` twice, shows `ReferenceEquals` is `true`, then
 adds a screening through one reference and reads the new count through the
 other.
 
+<p align="center"><img src="docs/uml/singleton.png" alt="UML class diagram of the Singleton pattern" width="520"></p>
+
 ### 2. Factory Method — `HallLayout.CreateSeat()`
 
-**Problem.** In Lab 0 `Screening` built its seats with `new Seat(...)` in a
-loop. Introducing VIP seats would have meant putting `if (isVipRow)` logic
-inside `Screening`, and every new seat type would grow that `if` chain.
+**Problem.** If `Screening` builds its own seats with `new Seat(...)` in a
+loop, introducing VIP seats means putting `if (isVipRow)` logic inside
+`Screening`, and every new seat type grows that `if` chain.
 
-**Solution.** Seat creation is delegated to a *creator* hierarchy:
+**Solution.** Seat creation is delegated to a *creator* hierarchy.
+`HallLayout.GenerateSeats()` holds the shared algorithm (walk rows × numbers)
+and calls the abstract `CreateSeat(row, number)` for each position. Each
+subclass overrides only that one method:
 
+```csharp
+public abstract class HallLayout
+{
+    protected abstract Seat CreateSeat(char row, int number);     // the factory method
+
+    public IReadOnlyList<Seat> GenerateSeats()
+    {
+        var seats = new List<Seat>(Rows * SeatsPerRow);
+        for (int r = 0; r < Rows; r++)
+            for (int n = 1; n <= SeatsPerRow; n++)
+                seats.Add(CreateSeat((char)('A' + r), n));
+        return seats;
+    }
+}
+
+public class PremiumHallLayout : HallLayout
+{
+    protected override Seat CreateSeat(char row, int number) =>
+        (row - 'A') >= Rows - _vipRows ? new VipSeat(row, number) : new StandardSeat(row, number);
+}
 ```
-HallLayout (abstract)                      Seat (abstract)
- ├─ GenerateSeats()   ── uses ──►  CreateSeat()  ──creates──►  ├─ StandardSeat
- ├─ StandardHallLayout : CreateSeat() → StandardSeat            └─ VipSeat
- └─ PremiumHallLayout  : CreateSeat() → VipSeat for the last N rows
-```
 
-`HallLayout.GenerateSeats()` holds the shared algorithm (walk rows ×
-numbers) and calls the abstract `CreateSeat(row, number)` for each position.
-Each subclass overrides only that one method. `Screening` just receives a
-`HallLayout` and asks it for seats; it never names a concrete seat class.
+`Screening` just receives a `HallLayout` and asks it for seats; it never
+names a concrete seat class. A new kind of hall is one new subclass.
 
 A side benefit: each `Seat` subclass carries its own `PriceMultiplier`, so
 `PriceCalculator` prices a VIP seat correctly without knowing VIP exists.
+
+<p align="center"><img src="docs/uml/factory-method.png" alt="UML class diagram of the Factory Method pattern" width="760"></p>
+
+| Role              | Class                                      |
+|-------------------|--------------------------------------------|
+| Creator           | `HallLayout`                               |
+| Concrete creators | `StandardHallLayout`, `PremiumHallLayout`  |
+| Product           | `Seat`                                     |
+| Concrete products | `StandardSeat`, `VipSeat`                  |
 
 ### 3. Builder — `BookingBuilder`
 
 **Problem.** A booking is assembled gradually: the customer is known first,
 then the screening, then seats are clicked one at a time, then maybe a note.
-In Lab 0 all of this was squeezed into `BookingService.Book(customer,
-screening, seatLabels)`, mixing *construction* with *processing*.
+Squeezing all of that into a single method such as
+`BookingService.Book(customer, screening, seatLabels)` mixes *construction*
+with *processing*, and leaves no good place for validation.
 
 **Solution.** A fluent builder collects the parts and validates them once,
 in `Build()`:
@@ -203,20 +158,22 @@ bookingService.Confirm(booking);   // price -> pay -> reserve -> save
 `Build()` checks that a customer and a screening were set, that at least one
 seat was added, that no seat was added twice, that every seat exists in the
 hall, and that none is already taken. A `Booking` object therefore can never
-exist in a half-built or invalid state. `BookingService` shrank to its real
-job: pricing, payment, reservation and persistence.
+exist in a half-built or invalid state, and `BookingService` is left with its
+real job: pricing, payment, reservation and persistence.
 
-### Patterns considered but not used (yet)
+<p align="center"><img src="docs/uml/builder.png" alt="UML class diagram of the Builder pattern" width="760"></p>
+
+### Patterns considered but not used
 
 - **Abstract Factory** would make sense once halls need *families* of
   related objects (seats + screen + sound system), not just seats.
 - **Prototype** fits cloning a template `Screening` across a week of
-  identical time slots - a good candidate for a later lab.
+  identical time slots.
 - **Object Pool** is unnecessary here; seat objects are cheap to create.
 
-## Running the project
+## Results
 
-Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download).
+Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download) or newer.
 
 ```bash
 cd CinemaBooking
@@ -229,9 +186,14 @@ builds and confirms two bookings (one with a VIP seat and a student discount,
 one on a Tuesday via PayPal) and shows four invalid bookings being rejected
 by the builder.
 
-## What comes next
+## Conclusions
 
-The structure already leaves room for the patterns planned in later labs:
-discounts are a natural **Strategy**, seat add-ons fit **Decorator**,
-screening changes fit **Observer**, the booking lifecycle fits **State**,
-and `BookingService` could become a **Facade** over the whole flow.
+- **Singleton** guarantees one shared schedule and one seat state for the
+  whole application. It is used only for something that is singular by
+  nature, since a singleton is in effect global state.
+- **Factory Method** moved the choice of seat type out of `Screening` and
+  into the hall layouts, so new hall and seat types are added as new classes.
+- **Builder** separated assembling a booking from processing it and put all
+  validation in one place, so an invalid `Booking` cannot be created.
+- In all three cases object creation ended up behind a single, named place
+  instead of `new` calls spread through the code.

@@ -1,0 +1,43 @@
+classDiagram
+    direction TB
+    class HallLayout {
+        <<abstract>>
+        +int Rows
+        +int SeatsPerRow
+        +GenerateSeats() IReadOnlyList~Seat~
+        #CreateSeat(char row, int number)* Seat
+    }
+    class StandardHallLayout {
+        #CreateSeat(char row, int number) Seat
+    }
+    class PremiumHallLayout {
+        -int _vipRows
+        #CreateSeat(char row, int number) Seat
+    }
+    class Seat {
+        <<abstract>>
+        +char Row
+        +int Number
+        +string Category*
+        +decimal PriceMultiplier*
+        +Take() void
+    }
+    class StandardSeat {
+        +PriceMultiplier = 1.0
+    }
+    class VipSeat {
+        +PriceMultiplier = 1.5
+    }
+    class Screening {
+        +HallLayout Hall
+        +IReadOnlyList~Seat~ Seats
+    }
+    HallLayout <|-- StandardHallLayout
+    HallLayout <|-- PremiumHallLayout
+    Seat <|-- StandardSeat
+    Seat <|-- VipSeat
+    HallLayout ..> Seat : GenerateSeats() calls CreateSeat()
+    StandardHallLayout ..> StandardSeat : creates
+    PremiumHallLayout ..> StandardSeat : creates (front rows)
+    PremiumHallLayout ..> VipSeat : creates (last N rows)
+    Screening --> HallLayout : asks for seats

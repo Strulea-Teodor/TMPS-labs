@@ -1,0 +1,33 @@
+classDiagram
+    direction LR
+    class BookingBuilder {
+        -Customer _customer
+        -Screening _screening
+        -List~string~ _seatLabels
+        -string _note
+        +ForCustomer(Customer) BookingBuilder
+        +ForScreening(Screening) BookingBuilder
+        +AddSeat(string label) BookingBuilder
+        +AddSeats(string[] labels) BookingBuilder
+        +WithNote(string note) BookingBuilder
+        +Build() Booking
+        +Reset() BookingBuilder
+    }
+    class Booking {
+        +Customer Customer
+        +Screening Screening
+        +IReadOnlyList~Seat~ Seats
+        +string Note
+        +decimal TotalPrice
+    }
+    class Program {
+        +Main() void
+    }
+    class BookingService {
+        +Confirm(Booking) Booking
+    }
+    Program ..> BookingBuilder : configures step by step
+    BookingBuilder ..> Booking : Build() validates and creates
+    Program ..> BookingService : passes the finished Booking
+    BookingService ..> Booking : prices, charges, saves
+    note for BookingBuilder "Each step returns the builder itself (fluent interface)"
