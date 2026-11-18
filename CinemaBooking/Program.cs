@@ -1,11 +1,12 @@
 using CinemaBooking.Builders;
+using CinemaBooking.Commands;
 using CinemaBooking.Discounts;
 using CinemaBooking.Domain;
 using CinemaBooking.Facade;
 using CinemaBooking.Halls;
+using CinemaBooking.Notifications;
 using CinemaBooking.Orders;
 using CinemaBooking.Payments;
-using CinemaBooking.Payments.External;
 using CinemaBooking.Repositories;
 using CinemaBooking.Schedule;
 using CinemaBooking.Services;
@@ -16,133 +17,149 @@ public static class Program
 {
     public static void Main()
     {
-        Console.WriteLine("=== Cinema Booking System - Lab 2 (Structural patterns) ===\n");
+        Console.WriteLine("=== Cinema Booking System - Lab 3 (Behavioral patterns) ===\n");
 
         // --- Wire up dependencies (composition root) -----------------------
         var discounts = new List<IDiscount> { new StudentDiscount(), new TuesdayDiscount() };
         var priceCalculator = new PriceCalculator(discounts);
         var repository = new InMemoryBookingRepository();
         var printer = new TicketPrinter();
+        var cinema = new CinemaFacade(priceCalculator, repository, printer);
 
         SeedSchedule();
 
-        DemoDecorator(priceCalculator);
-        DemoAdapter(priceCalculator, repository, printer);
-        DemoFacade(priceCalculator, repository, printer);
+        DemoState(priceCalculator, repository);
+        DemoObserver(cinema);
+        DemoCommand(cinema);
+
+        Header("Summary");
+        cinema.ShowSummary();
     }
 
     // ----------------------------------------------------------------------
-    // DECORATOR: extras are wrapped around a tickets order one layer at a
-    // time. Every layer is still an IBookingOrder, so Total and Lines keep
-    // working no matter how many layers there are.
+    // STATE: the same two calls - Confirm() and Cancel() - do different
+    // things depending on the booking's current state object.
     // ----------------------------------------------------------------------
-    private static void DemoDecorator(PriceCalculator priceCalculator)
+    private static void DemoState(PriceCalculator priceCalculator, IBookingRepository repository)
     {
-        Header("1. DECORATOR - order extras");
+        Header("1. STATE - booking lifecycle");
 
+        var screening = CinemaSchedule.Instance.FindById(3)!;
         var ana = new Customer("Ana Popescu", "ana@example.com", isStudent: true);
-        var booking = new BookingBuilder()
-            .ForCustomer(ana)
-            .ForScreening(CinemaSchedule.Instance.FindById(1)!)
-            .AddSeats("A1", "A2")
-            .Build();
+        var service = new BookingService(priceCalculator, repository, new CardPayment("4111222233334444"));
 
-        IBookingOrder order = new TicketsOrder(booking, priceCalculator.Calculate(booking));
-        ShowOrder("tickets only", order);
+        Console.WriteLine("  Booking A: Ana -> Oppenheimer, seats A1 + A2");
+        var booking = new BookingBuilder().ForCustomer(ana).ForScreening(screening).AddSeats("A1", "A2").Build();
+        ShowState("after Build()", booking);
 
-        order = new PopcornExtra(order);
-        ShowOrder("+ popcorn", order);
+        service.Confirm(booking);                       // pays, then booking.Confirm(total)
+        ShowState("after payment", booking);
 
-        order = new DrinkExtra(order);
-        ShowOrder("+ drink", order);
+        Try("Confirm() again", () => booking.Confirm(booking.TotalPrice));
 
-        order = new DrinkExtra(order);              // the same decorator can be applied twice
-        ShowOrder("+ second drink", order);
+        decimal refund = booking.Cancel();
+        Console.WriteLine($"    Cancel() -> refund {refund:0.00} MDL");
+        ShowState("after Cancel()", booking);
 
-        order = new Glasses3DExtra(order);          // priced per seat, read from the wrapped order
-        ShowOrder("+ 3D glasses", order);
+        Try("Cancel() again", () => booking.Cancel());
+        Try("Confirm() after cancel", () => booking.Confirm(100m));
 
-        Console.WriteLine("\n  Receipt lines of the fully wrapped order:");
-        foreach (var line in order.Lines)
-            Console.WriteLine($"    {line.Description,-18}{line.Amount,8:0.00} MDL");
-        Console.WriteLine("  (nothing was paid or reserved here - this only shows the wrapping)\n");
+        Console.WriteLine("\n  Booking B: Ana -> Oppenheimer, seat B1, cancelled before paying");
+        var unpaid = new BookingBuilder().ForCustomer(ana).ForScreening(screening).AddSeat("B1").Build();
+        ShowState("after Build()", unpaid);
+        Console.WriteLine($"    Cancel() -> refund {unpaid.Cancel():0.00} MDL (same call, different state, different result)");
+        ShowState("after Cancel()", unpaid);
+        Console.WriteLine();
     }
 
     // ----------------------------------------------------------------------
-    // ADAPTER: BookingService expects an IPaymentMethod. The QuickPay SDK has
-    // a completely different API. QuickPayAdapter makes one look like the other.
+    // OBSERVER: the screening announces its changes; each subscriber decides
+    // for itself whether and how to react.
     // ----------------------------------------------------------------------
-    private static void DemoAdapter(PriceCalculator priceCalculator, IBookingRepository repository, TicketPrinter printer)
+    private static void DemoObserver(CinemaFacade cinema)
     {
-        Header("2. ADAPTER - third-party QuickPay SDK as an IPaymentMethod");
+        Header("2. OBSERVER - screening notifications");
 
-        var schedule = CinemaSchedule.Instance;
+        var screening = CinemaSchedule.Instance.FindById(2)!;
         var ion = new Customer("Ion Rusu", "ion@example.com");
-        var quickPay = new QuickPayClient(merchantId: "CINEMA42");      // the incompatible third-party object
+        var maria = new Customer("Maria Ceban", "maria@example.com", isStudent: true);
 
-        // The SDK on its own - note the different method, units and return type.
-        var raw = quickPay.SubmitCharge(amountMinorUnits: 100, currencyIso: "MDL", reference: "connection test");
-        Console.WriteLine($"  Raw SDK call:   SubmitCharge(100, \"MDL\", ...) -> {raw.StatusCode} {raw.Message}");
-        Console.WriteLine("  Our interface:  bool Pay(decimal amount)\n");
+        Console.WriteLine("  Ion books seat A1 for Paddington:");
+        var ionsBooking = cinema.BookTickets(ion, 2, new[] { "A1" }, new PayPalPayment("ion@example.com"));
 
-        // Scenario A: adapted payment succeeds. BookingService is unchanged and unaware.
-        Console.WriteLine("  Scenario A: Ion -> Paddington on Tuesday, seat B2, QuickPay");
-        IPaymentMethod payment = new QuickPayAdapter(quickPay, reference: "Ion Rusu / screening 2");
-        var service = new BookingService(priceCalculator, repository, payment);
+        var ionsNotifier = new BookedCustomerNotifier(ion);     // wants to know about time changes
+        var mariasWaitlist = new WaitlistNotifier(maria);       // wants to know about free seats
+        screening.Subscribe(ionsNotifier);
+        screening.Subscribe(mariasWaitlist);
+        Console.WriteLine($"  Subscribed: Ion (ticket holder), Maria (waitlist). Observers: {screening.ObserverCount}\n");
 
-        var booking = new BookingBuilder().ForCustomer(ion).ForScreening(schedule.FindById(2)!).AddSeat("B2").Build();
-        service.Confirm(booking);
-        printer.Print(new TicketsOrder(booking, booking.TotalPrice));
+        DateTime original = screening.StartTime;
 
-        // Scenario B: the SDK declines (over its 500 MDL limit). The adapter turns the
-        // status code into `false`, and the service reacts exactly as for any other failure.
-        Console.WriteLine("  Scenario B: Ion -> Oppenheimer, 4 VIP seats (660 MDL), QuickPay limit is 500 MDL");
-        var bigBooking = new BookingBuilder()
-            .ForCustomer(ion)
-            .ForScreening(schedule.FindById(3)!)
-            .AddSeats("D1", "D2", "D3", "D4")
-            .Build();
+        Console.WriteLine("  The screening is moved two hours later:");
+        screening.Reschedule(original.AddHours(2));
+
+        Console.WriteLine("\n  Ion cancels his booking, so his seat is released:");
+        decimal refund = ionsBooking.Cancel();
+        Console.WriteLine($"    (Ion is refunded {refund:0.00} MDL)");
+
+        screening.Unsubscribe(ionsNotifier);
+        Console.WriteLine($"\n  Ion unsubscribes. Observers: {screening.ObserverCount}");
+        Console.WriteLine("  The screening is moved back - nobody left who cares about the time:");
+        screening.Reschedule(original);
+        Console.WriteLine("    (no notifications sent)\n");
+
+        screening.Unsubscribe(mariasWaitlist);
+    }
+
+    // ----------------------------------------------------------------------
+    // COMMAND: every action is an object. The history runs them, logs them
+    // and can undo them without knowing what they do.
+    // ----------------------------------------------------------------------
+    private static void DemoCommand(CinemaFacade cinema)
+    {
+        Header("3. COMMAND - actions with undo");
+
+        var screening = CinemaSchedule.Instance.FindById(1)!;
+        var ion = new Customer("Ion Rusu", "ion@example.com");
+        var maria = new Customer("Maria Ceban", "maria@example.com", isStudent: true);
+        var ana = new Customer("Ana Popescu", "ana@example.com", isStudent: true);
+        var card = new CardPayment("4111222233334444");
+
+        screening.Subscribe(new WaitlistNotifier(ana));         // Ana waits for a seat at Dune
+
+        var history = new CommandHistory();
+
+        Console.WriteLine("  Executing three commands:");
+        history.Execute(new BookTicketsCommand(cinema, ion, 1, new[] { "A1" }, card));
+        history.Execute(new BookTicketsCommand(cinema, maria, 1, new[] { "B3", "C3" }, card, Extra.Popcorn));
+        history.Execute(new RescheduleScreeningCommand(screening, screening.StartTime.AddHours(1)));
+
+        Console.WriteLine("  A command that fails is not recorded:");
         try
         {
-            service.Confirm(bigBooking);
+            history.Execute(new BookTicketsCommand(cinema, ana, 1, new[] { "A1" }, card));
         }
         catch (InvalidOperationException ex)
         {
-            Console.WriteLine($"  Rejected: {ex.Message}");
-            Console.WriteLine($"  Seat D1 still free? {!schedule.FindById(3)!.FindSeat("D1")!.IsTaken}\n");
+            Console.WriteLine($"    Rejected: {ex.Message}");
         }
-    }
 
-    // ----------------------------------------------------------------------
-    // FACADE: the same purchase flow as above, but the client makes ONE call.
-    // It hands the facade its dependencies once and never calls the builder,
-    // calculator, decorators, service or printer itself.
-    // ----------------------------------------------------------------------
-    private static void DemoFacade(PriceCalculator priceCalculator, IBookingRepository repository, TicketPrinter printer)
-    {
-        Header("3. FACADE - CinemaFacade");
-
-        var cinema = new CinemaFacade(priceCalculator, repository, printer);
-        var maria = new Customer("Maria Ceban", "maria@example.com", isStudent: true);
-
-        cinema.ShowProgramme();
-
-        Console.WriteLine("  One call: Maria (student) -> Dune, B3 + C3 (VIP), card, popcorn + drink + 3D glasses");
-        cinema.BookTickets(
-            maria,
-            1,                                      // screening id
-            new[] { "B3", "C3" },                   // seats
-            new CardPayment("4111222233334444"),    // any IPaymentMethod
-            Extra.Popcorn, Extra.Drink, Extra.Glasses3D);
-
+        Console.WriteLine($"\n  History ({history.Count} commands):");
+        foreach (var entry in history.Log)
+            Console.WriteLine($"    - {entry}");
+        Console.WriteLine();
         cinema.ShowSeatMap(1);
 
-        Console.WriteLine("  The facade passes subsystem errors through unchanged:");
-        TryBook("screening #99", () => cinema.BookTickets(maria, 99, new[] { "A1" }, new CardPayment("4111222233334444")));
-        TryBook("seat B3 again", () => cinema.BookTickets(maria, 1, new[] { "B3" }, new CardPayment("4111222233334444")));
-        Console.WriteLine();
+        Console.WriteLine("  Undo #1 (the reschedule):");
+        history.UndoLast();
+        Console.WriteLine($"    Screening #1 now starts at {screening.StartTime:ddd dd MMM HH:mm}");
 
-        cinema.ShowSummary();
+        Console.WriteLine("\n  Undo #2 (Maria's booking) - cancels it, refunds her, and the waitlist hears about it:");
+        history.UndoLast();
+        Console.WriteLine();
+        cinema.ShowSeatMap(1);
+
+        Console.WriteLine($"  History now ({history.Count} command): {string.Join("; ", history.Log)}\n");
     }
 
     // ----------------------------------------------------------------------
@@ -164,19 +181,22 @@ public static class Program
         schedule.AddScreening(oppenheimer, nextSaturday.AddHours(21), 110m, new PremiumHallLayout(rows: 4, seatsPerRow: 6, vipRows: 2));
     }
 
-    private static void ShowOrder(string label, IBookingOrder order) =>
-        Console.WriteLine($"  {label,-16} total = {order.Total,7:0.00} MDL   ({order.Lines.Count} line{(order.Lines.Count == 1 ? "" : "s")})");
+    private static void ShowState(string moment, Booking booking)
+    {
+        string seats = string.Join(", ", booking.Seats.Select(s => $"{s.Label} {(s.IsTaken ? "taken" : "free")}"));
+        Console.WriteLine($"    {moment,-16} state = {booking.State.Name,-10} paid = {booking.TotalPrice,7:0.00}   seats: {seats}");
+    }
 
-    private static void TryBook(string label, Action book)
+    private static void Try(string label, Action action)
     {
         try
         {
-            book();
-            Console.WriteLine($"    {label,-16} -> booked (unexpected!)");
+            action();
+            Console.WriteLine($"    {label,-24} -> allowed (unexpected!)");
         }
-        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        catch (InvalidOperationException ex)
         {
-            Console.WriteLine($"    {label,-16} -> rejected: {ex.Message}");
+            Console.WriteLine($"    {label,-24} -> rejected: {ex.Message}");
         }
     }
 

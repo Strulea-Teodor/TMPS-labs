@@ -1,0 +1,35 @@
+classDiagram
+    direction TB
+    class Booking {
+        +IBookingState State
+        +decimal TotalPrice
+        +decimal RefundedAmount
+        +Confirm(decimal amountPaid) void
+        +Cancel() decimal
+        ~TransitionTo(IBookingState next) void
+    }
+    class IBookingState {
+        <<interface>>
+        +string Name
+        +Confirm(Booking, decimal amountPaid) void
+        +Cancel(Booking) decimal
+    }
+    class PendingState {
+        +Confirm() reserves seats
+        +Cancel() no refund
+    }
+    class ConfirmedState {
+        +Confirm() throws
+        +Cancel() refunds, frees seats
+    }
+    class CancelledState {
+        +Confirm() throws
+        +Cancel() throws
+    }
+    Booking o--> "1" IBookingState : delegates to current state
+    IBookingState <|.. PendingState
+    IBookingState <|.. ConfirmedState
+    IBookingState <|.. CancelledState
+    PendingState ..> ConfirmedState : Confirm()
+    PendingState ..> CancelledState : Cancel()
+    ConfirmedState ..> CancelledState : Cancel()

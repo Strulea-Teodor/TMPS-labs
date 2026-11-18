@@ -100,11 +100,16 @@ public class CinemaFacade
         return booking;
     }
 
-    /// <summary>Prints how many bookings exist and how many seats are still free.</summary>
+    /// <summary>Prints every stored booking with its state, the revenue and the free seats.</summary>
     public void ShowSummary()
     {
-        Console.WriteLine($"  Bookings stored:              {_repository.GetAll().Count}");
-        Console.WriteLine($"  Revenue:                      {_repository.GetAll().Sum(b => b.TotalPrice):0.00} MDL");
+        var bookings = _repository.GetAll().OrderBy(b => b.CreatedAt).ToList();
+
+        Console.WriteLine($"  Bookings stored: {bookings.Count}");
+        foreach (var b in bookings)
+            Console.WriteLine($"    {b.Id.ToString()[..8].ToUpper()}  {b.Customer.Name,-14} #{b.Screening.Id}  {string.Join(",", b.Seats.Select(s => s.Label)),-8} {b.State.Name,-10} paid {b.TotalPrice,7:0.00}  refunded {b.RefundedAmount,7:0.00}");
+
+        Console.WriteLine($"  Revenue (paid - refunded):    {bookings.Sum(b => b.TotalPrice - b.RefundedAmount):0.00} MDL");
         Console.WriteLine($"  Free seats across the cinema: {_schedule.TotalFreeSeats}");
     }
 

@@ -12,10 +12,9 @@ namespace CinemaBooking.Services;
 /// abstractions (IPaymentMethod, IBookingRepository, IBookingOrder), so
 /// their concrete implementations can be swapped freely.
 ///
-/// Lab 2: the service now charges an IBookingOrder instead of a bare Booking.
-/// Whether the order is plain tickets or tickets wrapped in three extras makes
-/// no difference here (Decorator), and neither does whether the payment method
-/// is one of ours or an adapted third-party SDK (Adapter).
+/// The service charges an IBookingOrder: plain tickets or tickets wrapped in
+/// extras, it makes no difference here. What "confirmed" means for the booking
+/// is decided by the booking's current state object (State pattern).
 /// </summary>
 public class BookingService
 {
@@ -56,10 +55,9 @@ public class BookingService
         if (!_paymentMethod.Pay(total))
             throw new InvalidOperationException("Payment failed. Seats were not reserved.");
 
-        // 3. Only after a successful payment: record the amount, reserve the seats and persist.
-        booking.TotalPrice = total;
-        foreach (var seat in booking.Seats)
-            seat.Take();
+        // 3. Only after a successful payment: the booking moves to its next state
+        //    (Pending -> Confirmed), which reserves the seats and records the amount.
+        booking.Confirm(total);
 
         _repository.Save(booking);
         return booking;

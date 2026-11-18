@@ -1,0 +1,41 @@
+classDiagram
+    direction TB
+    class Program {
+        +Main() void
+    }
+    class CommandHistory {
+        -Stack~ICommand~ _executed
+        +Execute(ICommand) void
+        +UndoLast() bool
+        +Log IReadOnlyList~string~
+    }
+    class ICommand {
+        <<interface>>
+        +string Description
+        +Execute() void
+        +Undo() void
+    }
+    class BookTicketsCommand {
+        -Booking _booking
+        +Execute() void
+        +Undo() void
+    }
+    class RescheduleScreeningCommand {
+        -DateTime _previousStartTime
+        +Execute() void
+        +Undo() void
+    }
+    class CinemaFacade {
+        +BookTickets(...) Booking
+    }
+    class Screening {
+        +Reschedule(DateTime) void
+    }
+    Program ..> CommandHistory : passes commands to
+    Program ..> BookTicketsCommand : creates
+    Program ..> RescheduleScreeningCommand : creates
+    CommandHistory o--> "0..*" ICommand : runs and remembers
+    ICommand <|.. BookTicketsCommand
+    ICommand <|.. RescheduleScreeningCommand
+    BookTicketsCommand --> CinemaFacade : receiver
+    RescheduleScreeningCommand --> Screening : receiver

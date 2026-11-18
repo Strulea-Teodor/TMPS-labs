@@ -37,6 +37,7 @@ public class TicketPrinter
         Console.WriteLine($"  {totalLabel,-26}{order.Total,10:0.00} MDL");
         Console.WriteLine(new string('-', width));
         Console.WriteLine($"  Booking #: {booking.Id.ToString()[..8].ToUpper()}");
+        Console.WriteLine($"  Status:    {booking.State.Name}");
         Console.WriteLine(line);
         Console.WriteLine();
     }

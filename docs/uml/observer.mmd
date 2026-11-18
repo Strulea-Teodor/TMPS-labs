@@ -1,0 +1,33 @@
+classDiagram
+    direction TB
+    class Screening {
+        -List~IScreeningObserver~ _observers
+        +DateTime StartTime
+        +Subscribe(IScreeningObserver) void
+        +Unsubscribe(IScreeningObserver) void
+        +Reschedule(DateTime newStartTime) void
+        +ReleaseSeats(seats) void
+        -Notify(ScreeningEvent) void
+    }
+    class IScreeningObserver {
+        <<interface>>
+        +OnScreeningChanged(Screening, ScreeningEvent) void
+    }
+    class BookedCustomerNotifier {
+        -Customer _customer
+        +OnScreeningChanged(Screening, ScreeningEvent) void
+    }
+    class WaitlistNotifier {
+        -Customer _customer
+        +OnScreeningChanged(Screening, ScreeningEvent) void
+    }
+    class ScreeningEvent {
+        +ScreeningChange Kind
+        +string Details
+    }
+    Screening o--> "0..*" IScreeningObserver : notifies
+    IScreeningObserver <|.. BookedCustomerNotifier
+    IScreeningObserver <|.. WaitlistNotifier
+    Screening ..> ScreeningEvent : creates
+    note for BookedCustomerNotifier "Reacts to Rescheduled"
+    note for WaitlistNotifier "Reacts to SeatsReleased"
