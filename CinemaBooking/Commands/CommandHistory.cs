@@ -40,9 +40,11 @@ public class CommandHistory
             return false;
         }
 
-        ICommand command = _executed.Pop();
+        // Peek first: if Undo() throws, the command stays in the history.
+        ICommand command = _executed.Peek();
         Console.WriteLine($"    Undo: {command.Description}");
         command.Undo();
+        _executed.Pop();
         return true;
     }
 }

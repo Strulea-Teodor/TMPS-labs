@@ -8,6 +8,7 @@ namespace CinemaBooking.States;
 /// </summary>
 public class CancelledState : IBookingState
 {
+    public bool AcceptsPayment => false;
     public string Name => "Cancelled";
 
     public void Confirm(Booking booking, decimal amountPaid) =>

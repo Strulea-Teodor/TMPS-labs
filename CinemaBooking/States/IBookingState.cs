@@ -15,6 +15,9 @@ public interface IBookingState
 {
     string Name { get; }
 
+    /// <summary>True only while the booking is still waiting for its payment.</summary>
+    bool AcceptsPayment { get; }
+
     /// <summary>The payment went through: reserve the seats and record the amount.</summary>
     void Confirm(Booking booking, decimal amountPaid);
 

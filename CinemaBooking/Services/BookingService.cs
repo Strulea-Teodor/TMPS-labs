@@ -40,6 +40,11 @@ public class BookingService
     {
         var booking = order.Booking;
 
+        // Never charge for a booking that is already paid or cancelled.
+        if (!booking.State.AcceptsPayment)
+            throw new InvalidOperationException(
+                $"A {booking.State.Name.ToLowerInvariant()} booking cannot be paid for.");
+
         // Guard against a race: the builder checked availability at build time,
         // but another booking could have taken a seat since then.
         var alreadyTaken = booking.Seats.Where(s => s.IsTaken).ToList();

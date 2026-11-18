@@ -24,7 +24,7 @@ public class Booking
     public DateTime CreatedAt { get; } = DateTime.Now;
 
     /// <summary>Amount actually charged: tickets after discounts plus any extras. Set once paid.</summary>
-    public decimal TotalPrice { get; set; }
+    public decimal TotalPrice { get; internal set; }
 
     /// <summary>Amount given back when a paid booking was cancelled.</summary>
     public decimal RefundedAmount { get; internal set; }

@@ -1,3 +1,4 @@
+using System.Globalization;
 using CinemaBooking.Builders;
 using CinemaBooking.Commands;
 using CinemaBooking.Discounts;
@@ -17,6 +18,9 @@ public static class Program
 {
     public static void Main()
     {
+        // Same number and date formatting on every machine, whatever its regional settings.
+        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+
         Console.WriteLine("=== Cinema Booking System - Lab 3 (Behavioral patterns) ===\n");
 
         // --- Wire up dependencies (composition root) -----------------------
@@ -125,6 +129,7 @@ public static class Program
         var ana = new Customer("Ana Popescu", "ana@example.com", isStudent: true);
         var card = new CardPayment("4111222233334444");
 
+        screening.Subscribe(new BookedCustomerNotifier(ion));   // Ion will hold a ticket for Dune
         screening.Subscribe(new WaitlistNotifier(ana));         // Ana waits for a seat at Dune
 
         var history = new CommandHistory();

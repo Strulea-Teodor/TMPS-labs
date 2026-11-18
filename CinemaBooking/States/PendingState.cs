@@ -8,6 +8,7 @@ namespace CinemaBooking.States;
 /// </summary>
 public class PendingState : IBookingState
 {
+    public bool AcceptsPayment => true;
     public string Name => "Pending";
 
     public void Confirm(Booking booking, decimal amountPaid)
