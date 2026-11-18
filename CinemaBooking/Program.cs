@@ -189,7 +189,7 @@ public static class Program
     private static void ShowState(string moment, Booking booking)
     {
         string seats = string.Join(", ", booking.Seats.Select(s => $"{s.Label} {(s.IsTaken ? "taken" : "free")}"));
-        Console.WriteLine($"    {moment,-16} state = {booking.State.Name,-10} paid = {booking.TotalPrice,7:0.00}   seats: {seats}");
+        Console.WriteLine($"    {moment,-16} state = {booking.State.Name,-10} paid = {booking.TotalPrice,7:0.00}  refunded = {booking.RefundedAmount,7:0.00}   seats: {seats}");
     }
 
     private static void Try(string label, Action action)
