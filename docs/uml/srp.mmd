@@ -1,0 +1,33 @@
+classDiagram
+    direction LR
+    class Booking {
+        <<only holds data>>
+        +Guid Id
+        +Customer Customer
+        +Screening Screening
+        +IReadOnlyList~Seat~ Seats
+        +decimal TotalPrice
+    }
+    class PriceCalculator {
+        <<only pricing>>
+        +Calculate(Booking) decimal
+    }
+    class TicketPrinter {
+        <<only ticket layout>>
+        +Print(Booking) void
+    }
+    class InMemoryBookingRepository {
+        <<only storage>>
+        +Save(Booking) void
+        +GetById(Guid) Booking
+        +GetAll() IReadOnlyList~Booking~
+    }
+    class BookingService {
+        <<only the booking flow>>
+        +Book(Customer, Screening, seatLabels) Booking
+    }
+    PriceCalculator ..> Booking : prices
+    TicketPrinter ..> Booking : prints
+    InMemoryBookingRepository ..> Booking : stores
+    BookingService ..> PriceCalculator : uses
+    BookingService ..> InMemoryBookingRepository : uses

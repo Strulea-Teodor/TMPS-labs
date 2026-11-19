@@ -1,0 +1,30 @@
+classDiagram
+    direction TB
+    class PriceCalculator {
+        -IReadOnlyList~IDiscount~ _discounts
+        +Calculate(Booking) decimal
+    }
+    class IDiscount {
+        <<interface>>
+        +string Name
+        +IsApplicable(Booking) bool
+        +Apply(Booking, decimal) decimal
+    }
+    class StudentDiscount {
+        +IsApplicable(Booking) bool
+        +Apply(Booking, decimal) decimal
+    }
+    class TuesdayDiscount {
+        +IsApplicable(Booking) bool
+        +Apply(Booking, decimal) decimal
+    }
+    class AnyNewDiscount {
+        +IsApplicable(Booking) bool
+        +Apply(Booking, decimal) decimal
+    }
+    PriceCalculator o--> "0..*" IDiscount : applies each
+    IDiscount <|.. StudentDiscount
+    IDiscount <|.. TuesdayDiscount
+    IDiscount <|.. AnyNewDiscount
+    note for PriceCalculator "Closed for modification"
+    note for AnyNewDiscount "Open for extension: a new rule is a new class"
