@@ -19,7 +19,9 @@ public class PriceCalculator
 
     public decimal Calculate(Booking booking)
     {
-        decimal price = booking.Screening.BasePrice * booking.Seats.Count;
+        // Each seat type carries its own multiplier (VIP = 1.5x, Standard = 1x),
+        // so a premium hall prices itself without PriceCalculator knowing the types.
+        decimal price = booking.Seats.Sum(seat => booking.Screening.BasePrice * seat.PriceMultiplier);
 
         foreach (var discount in _discounts)
         {
