@@ -1,21 +1,15 @@
 using CinemaBooking.Domain;
-using CinemaBooking.Orders;
 using CinemaBooking.Payments;
 using CinemaBooking.Repositories;
 
 namespace CinemaBooking.Services;
 
 /// <summary>
-/// Processes an order: pay -> reserve seats -> save.
+/// Orchestrates the booking flow: reserve seats -> calculate price -> pay -> save.
 ///
-/// DIP: payment, storage and the order itself are known only through
-/// abstractions (IPaymentMethod, IBookingRepository, IBookingOrder), so
-/// their concrete implementations can be swapped freely.
-///
-/// Lab 2: the service now charges an IBookingOrder instead of a bare Booking.
-/// Whether the order is plain tickets or tickets wrapped in three extras makes
-/// no difference here (Decorator), and neither does whether the payment method
-/// is one of ours or an adapted third-party SDK (Adapter).
+/// DIP: this high-level class depends only on abstractions
+/// (IPaymentMethod, IBookingRepository). The concrete implementations are
+/// injected through the constructor, so they can be swapped freely.
 /// </summary>
 public class BookingService
 {
@@ -33,32 +27,32 @@ public class BookingService
         _paymentMethod = paymentMethod;
     }
 
-    /// <summary>Confirms a booking with no extras: tickets only.</summary>
-    public Booking Confirm(Booking booking) =>
-        Confirm(new TicketsOrder(booking, _priceCalculator.Calculate(booking)));
-
-    public Booking Confirm(IBookingOrder order)
+    public Booking Book(Customer customer, Screening screening, IEnumerable<string> seatLabels)
     {
-        var booking = order.Booking;
+        // 1. Resolve and validate the requested seats.
+        var seats = new List<Seat>();
+        foreach (var label in seatLabels)
+        {
+            var seat = screening.FindSeat(label)
+                ?? throw new ArgumentException($"Seat '{label}' does not exist in this hall.");
 
-        // Guard against a race: the builder checked availability at build time,
-        // but another booking could have taken a seat since then.
-        var alreadyTaken = booking.Seats.Where(s => s.IsTaken).ToList();
-        if (alreadyTaken.Count > 0)
-            throw new InvalidOperationException(
-                $"Seat(s) no longer available: {string.Join(", ", alreadyTaken.Select(s => s.Label))}.");
+            if (seat.IsTaken)
+                throw new InvalidOperationException($"Seat {seat.Label} is already taken.");
 
-        // 1. The order already knows its total (tickets + any extras).
-        decimal total = order.Total;
+            seats.Add(seat);
+        }
 
-        // 2. Take payment through whatever method was injected.
+        // 2. Build the booking and price it.
+        var booking = new Booking(customer, screening, seats);
+        booking.TotalPrice = _priceCalculator.Calculate(booking);
+
+        // 3. Take payment through whatever method was injected.
         Console.WriteLine($"  Paying with {_paymentMethod.Name}:");
-        if (!_paymentMethod.Pay(total))
+        if (!_paymentMethod.Pay(booking.TotalPrice))
             throw new InvalidOperationException("Payment failed. Seats were not reserved.");
 
-        // 3. Only after a successful payment: record the amount, reserve the seats and persist.
-        booking.TotalPrice = total;
-        foreach (var seat in booking.Seats)
+        // 4. Only after a successful payment: reserve the seats and persist.
+        foreach (var seat in seats)
             seat.Take();
 
         _repository.Save(booking);
